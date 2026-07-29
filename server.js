@@ -1,0 +1,32 @@
+import Fastify from 'fastify';
+import dotenv from 'dotenv';
+import db from './src/db/database.js';
+import mediaRoutes from './src/routes/movies.js';
+import tmdbRoutes from './src/routes/tmdb.js'; // Підключаємо маршрути TMDB
+
+dotenv.config();
+
+const fastify = Fastify({
+  logger: true
+});
+
+fastify.get('/api/health', async (request, reply) => {
+  return { status: 'ok', message: 'Media Tracker API працює!' };
+});
+
+// Реєструємо маршрути
+fastify.register(mediaRoutes, { prefix: '/api' });
+fastify.register(tmdbRoutes, { prefix: '/api/external' }); // Робимо окремий префікс для зовнішніх API
+
+const start = async () => {
+  try {
+    const port = process.env.PORT || 3000;
+    await fastify.listen({ port: port, host: '0.0.0.0' });
+    console.log(`Сервер запущено на http://localhost:${port}`);
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();

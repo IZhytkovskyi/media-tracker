@@ -1,0 +1,23 @@
+# Залежності Node.js
+node_modules/
+frontend/node_modules/
+
+# Збірка фронтенду
+frontend/dist/
+
+# Конфіденційні дані та ключі API
+.env
+.env.*
+!.env.example
+
+# Локальна база даних SQLite (щоб не перезаписати випадково особисті дані)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+src/db/*.db
+
+# Логи та тимчасові файли
+*.log
+.DS_Store
+.vscode/
