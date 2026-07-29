@@ -7,7 +7,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('all');
   const [mediaList, setMediaList] = useState([]);
   const [loading, setLoading] = useState(false);
-  
+
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -22,7 +22,7 @@ export default function Home() {
       const json = await res.json();
       if (json.data) setMediaList(json.data);
     } catch (err) {
-      console.error('Помилка завантаження:', err);
+      console.error('Помилка:', err);
     } finally {
       setLoading(false);
     }
@@ -47,44 +47,8 @@ export default function Home() {
     }
   };
 
-  const handleAddMedia = async (item) => {
-    try {
-      const detailsRes = await fetch(`/api/external/tmdb/details/${item.media_type}/${item.tmdb_id}`);
-      const detailsJson = await detailsRes.json();
-      const payload = detailsJson.data || item;
-
-      const res = await fetch('/api/media', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: payload.title,
-          original_title: payload.original_title,
-          media_type: payload.media_type,
-          status: 'planned',
-          poster_path: payload.poster_path,
-          backdrop_path: payload.backdrop_path,
-          release_date: payload.release_date,
-          genres: payload.genres || [],
-          total_seasons: payload.total_seasons || 0,
-          total_episodes: payload.total_episodes || 0,
-          tmdb_id: payload.tmdb_id,
-          imdb_id: payload.imdb_id
-        })
-      });
-
-      if (res.ok) {
-        setIsSearchOpen(false);
-        setSearchQuery('');
-        setSearchResults([]);
-        fetchMedia();
-      }
-    } catch (err) {
-      console.error('Помилка додавання:', err);
-    }
-  };
-
   const handleUpdateItem = async (e, id, updates) => {
-    e.stopPropagation(); // Запобігаємо переходу на сторінку при кліку на кнопки всередині картки
+    e.stopPropagation(); 
     try {
       const res = await fetch(`/api/media/${id}`, {
         method: 'PATCH',
@@ -93,19 +57,25 @@ export default function Home() {
       });
       if (res.ok) fetchMedia();
     } catch (err) {
-      console.error('Помилка оновлення:', err);
+      console.error('Помилка:', err);
     }
   };
 
   const handleDeleteItem = async (e, id) => {
     e.stopPropagation();
-    if (!confirm('Видалити цей тайтл зі списку?')) return;
+    if (!confirm('Видалити?')) return;
     try {
       const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
       if (res.ok) fetchMedia();
     } catch (err) {
-      console.error('Помилка видалення:', err);
+      console.error('Помилка:', err);
     }
+  };
+
+  const handleSearchResultClick = (result) => {
+    setIsSearchOpen(false);
+    // Відкриваємо універсальну сторінку
+    navigate(`/media/${result.media_type}/${result.tmdb_id}`);
   };
 
   return (
@@ -117,22 +87,28 @@ export default function Home() {
           <button style={activeTab === 'movie' ? styles.activeTab : styles.tab} onClick={() => setActiveTab('movie')}><Film size={16} /> Фільми</button>
           <button style={activeTab === 'series' ? styles.activeTab : styles.tab} onClick={() => setActiveTab('series')}><Tv size={16} /> Серіали</button>
         </div>
-        <button style={styles.addButton} onClick={() => setIsSearchOpen(true)}><Plus size={18} /> Додати</button>
+        <button style={styles.addButton} onClick={() => setIsSearchOpen(true)}><Plus size={18} /> Знайти</button>
       </header>
 
       <main style={styles.main}>
         {loading ? <p>Завантаження...</p> : mediaList.length === 0 ? (
           <div style={styles.emptyState}>
-            <p>У твоєму трекері поки немає записів.</p>
+            <p>Колекція порожня.</p>
           </div>
         ) : (
           <div style={styles.grid}>
             {mediaList.map(item => (
-              <div key={item.id} style={styles.card} onClick={() => navigate(`/media/${item.id}`)}>
+              <div 
+                key={item.id} 
+                style={styles.card} 
+                // Змінено навігацію на новий шлях з TMDB ID
+                onClick={() => navigate(`/media/${item.media_type}/${item.tmdb_id}`)}
+              >
                 <div style={styles.posterWrapper}>
-                  {item.poster_path ? <img src={item.poster_path} alt={item.title} style={styles.poster} /> : <div style={styles.noPoster}>Немає постера</div>}
+                  {item.poster_path ? <img src={item.poster_path} alt={item.title} style={styles.poster} /> : <div style={styles.noPoster}>Немає</div>}
                   <div style={styles.typeBadge}>{item.media_type === 'movie' ? <Film size={12} /> : <Tv size={12} />}</div>
                 </div>
+                
                 <div style={styles.cardContent}>
                   <h3 style={styles.title}>{item.title}</h3>
                   <p style={styles.subtitle}>{item.release_date?.split('-')[0] || ''}</p>
@@ -143,11 +119,11 @@ export default function Home() {
                     onClick={(e) => e.stopPropagation()}
                     style={styles.select}
                   >
-                    <option value="planned">Заплановано</option>
-                    <option value="watching">Дивлюся</option>
-                    <option value="completed">Завершено</option>
+                    <option value="planned">У планах</option>
+                    <option value="watching">Дивлюсь</option>
+                    <option value="completed">Переглянуто</option>
                     <option value="on_hold">На паузі</option>
-                    <option value="dropped">Закинуто</option>
+                    <option value="dropped">Кинуто</option>
                   </select>
 
                   <div style={styles.ratingRow} onClick={(e) => e.stopPropagation()}>
@@ -159,6 +135,7 @@ export default function Home() {
                       style={styles.ratingInput}
                     />
                   </div>
+                  
                   <button onClick={(e) => handleDeleteItem(e, item.id)} style={styles.deleteButton}><Trash2 size={14} /></button>
                 </div>
               </div>
@@ -167,29 +144,39 @@ export default function Home() {
         )}
       </main>
 
-      {/* Модальне вікно пошуку залишається без змін */}
       {isSearchOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modal}>
             <div style={styles.modalHeader}>
-              <h2>Пошук на TMDB</h2>
+              <h2>Пошук TMDB</h2>
               <button style={styles.closeButton} onClick={() => setIsSearchOpen(false)}><X size={20} /></button>
             </div>
+            
             <form onSubmit={handleSearchTMDB} style={styles.searchForm}>
               <input type="text" placeholder="Назва..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={styles.searchInput} autoFocus />
               <button type="submit" style={styles.searchButton} disabled={searching}><Search size={18} /></button>
             </form>
+
             <div style={styles.searchResults}>
               {searchResults.map(result => (
-                <div key={result.tmdb_id} style={styles.searchItem}>
+                <div 
+                  key={result.tmdb_id} 
+                  style={styles.searchItem}
+                  onClick={() => handleSearchResultClick(result)}
+                  className="search-item-hover"
+                >
                   <img src={result.poster_path || 'https://via.placeholder.com/50x75'} alt={result.title} style={styles.searchPoster} />
                   <div style={styles.searchInfo}>
                     <h4>{result.title}</h4>
                     <p>{result.release_date?.split('-')[0]} • {result.media_type === 'movie' ? 'Фільм' : 'Серіал'}</p>
                   </div>
-                  <button style={styles.addButtonSmall} onClick={() => handleAddMedia(result)}><Plus size={16} /> Додати</button>
                 </div>
               ))}
+              
+              <style>{`
+                .search-item-hover { cursor: pointer; transition: background 0.2s; }
+                .search-item-hover:hover { background-color: #2a3a55 !important; }
+              `}</style>
             </div>
           </div>
         </div>
@@ -221,6 +208,7 @@ const styles = {
   ratingInput: { width: '50px', background: '#0f172a', color: '#fff', border: '1px solid #334155', padding: '4px', borderRadius: '4px', textAlign: 'center' },
   deleteButton: { marginTop: 'auto', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', alignSelf: 'flex-end', padding: '4px' },
   emptyState: { textAlign: 'center', padding: '60px 0', color: '#94a3b8' },
+  
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modal: { background: '#1e293b', width: '100%', maxWidth: '600px', borderRadius: '12px', padding: '20px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' },
@@ -231,6 +219,5 @@ const styles = {
   searchResults: { overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' },
   searchItem: { display: 'flex', alignItems: 'center', gap: '15px', background: '#0f172a', padding: '10px', borderRadius: '8px' },
   searchPoster: { width: '40px', height: '60px', objectFit: 'cover', borderRadius: '4px' },
-  searchInfo: { flexGrow: 1 },
-  addButtonSmall: { background: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }
+  searchInfo: { flexGrow: 1 }
 };

@@ -1,10 +1,13 @@
-import { searchTMDB, getTMDBDetails } from '../controllers/tmdb.js';
+import { searchTMDB, getTMDBDetails, getTMDBSeasonDetails, getTMDBEpisodeDetails } from '../controllers/tmdb.js';
 
 export default async function tmdbRoutes(fastify, options) {
-    // Ендпоінт для базового пошуку
+    // Пошук
     fastify.get('/tmdb/search', searchTMDB);
     
-    // Ендпоінт для отримання розширених деталей за ID
-    // :type має бути 'movie' або 'series'
+    // Деталі медіа
     fastify.get('/tmdb/details/:type/:id', getTMDBDetails);
+
+    // Деталі сезону та серії
+    fastify.get('/tmdb/details/series/:id/season/:season', getTMDBSeasonDetails);
+    fastify.get('/tmdb/details/series/:id/season/:season/episode/:episode', getTMDBEpisodeDetails);
 }
