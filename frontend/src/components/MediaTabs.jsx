@@ -66,7 +66,7 @@ export function TabMain({ media, tmdbData }) {
   const InfoRow = ({ label, value, children }) => {
     if (!value && !children) return null;
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', padding: '0px 0', alignItems: 'baseline' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', alignItems: 'baseline' }}>
         <span style={{ color: '#94a3b8', fontSize: '14px' }}>{label}</span>
         <div style={{ color: '#f8fafc', fontSize: '14px', lineHeight: '1.4' }}>
           {children || value}
