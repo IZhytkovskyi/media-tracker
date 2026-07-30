@@ -28,7 +28,7 @@ export default function EpisodeDetail() {
           }
         }
       } catch (err) {
-        console.error('Помилка завантаження серії:', err);
+        console.error('Помилка завантаження:', err);
       } finally {
         setLoading(false);
       }
@@ -37,7 +37,7 @@ export default function EpisodeDetail() {
   }, [id, seasonNumber, episodeNumber]);
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!episodeData) return <div style={styles.loadingWrapper}>Дані не знайдено</div>;
+  if (!episodeData) return <div style={styles.loadingWrapper}>Епізод не знайдено</div>;
 
   return (
     <div style={styles.container}>
@@ -45,7 +45,7 @@ export default function EpisodeDetail() {
       
       {episodeData.still_path && (
           <>
-            <div style={{ ...styles.backdropImage, backgroundImage: `url(https://image.tmdb.org/t/p/w1280${episodeData.still_path})` }} />
+            <div style={{ ...styles.backdropImage, backgroundImage: `url(https://image.tmdb.org/t/p/original${episodeData.still_path})` }} />
             <div style={styles.backdropGradient} />
           </>
       )}
@@ -56,22 +56,22 @@ export default function EpisodeDetail() {
       </div>
 
       <div style={styles.mainContent}>
-        {/* Ліва колонка ширша, оскільки для серії використовується кадр замість постера */}
+        {/* Ліва колонка */}
         <div style={{...styles.leftColumn, width: '350px'}}>
           <div style={styles.posterWrapper}>
-            <img
-              src={episodeData.still_path ? `https://image.tmdb.org/t/p/w500${episodeData.still_path}` : 'https://via.placeholder.com/500x281?text=Немає+кадру'}
-              alt={episodeData.name}
-              style={{...styles.poster, aspectRatio: '16/9', objectFit: 'cover'}}
+            <img 
+              src={episodeData.still_path ? `https://image.tmdb.org/t/p/w500${episodeData.still_path}` : 'https://via.placeholder.com/500x281?text=Немає+кадру'} 
+              alt={episodeData.name} 
+              style={{...styles.poster, aspectRatio: '16/9', objectFit: 'cover'}} 
             />
           </div>
-          {/* Кнопки для серії */}
+          {/* Панель дій */}
           <ActionButtons type="episode" media={media} />
         </div>
 
         <div style={styles.rightColumn}>
           <div style={styles.headerBlock}>
-            <h1 style={styles.mainTitle}>Серія {episodeData.episode_number}: {episodeData.name}</h1>
+            <h1 style={styles.mainTitle}>Епізод {episodeData.episode_number}: {episodeData.name}</h1>
             <h2 style={styles.originalTitle}>{media.title} - Сезон {seasonNumber}</h2>
           </div>
           
