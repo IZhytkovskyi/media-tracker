@@ -18,8 +18,8 @@ const createMediaSchema = {
         properties: {
             title: { type: 'string', minLength: 1 },
             original_title: { type: ['string', 'null'] },
-            media_type: { type: 'string', enum: ['movie', 'series'] },
-            status: { type: 'string', enum: ['planned', 'watching', 'completed', 'dropped', 'on_hold'], default: 'planned' },
+            media_type: { type: 'string', enum: ['movie', 'series', 'book', 'game', 'comic', 'manga'] },
+            status: { type: ['string', 'null'], enum: ['planned', 'watching', 'completed', 'dropped', 'on_hold', null], default: null },
             rating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
             review: { type: ['string', 'null'] },
             season: { type: 'integer', minimum: 0, default: 0 },
@@ -42,8 +42,8 @@ const updateMediaSchema = {
         properties: {
             title: { type: 'string', minLength: 1 },
             original_title: { type: ['string', 'null'] },
-            media_type: { type: 'string', enum: ['movie', 'series'] },
-            status: { type: 'string', enum: ['planned', 'watching', 'completed', 'dropped', 'on_hold'] },
+            media_type: { type: 'string', enum: ['movie', 'series', 'book', 'game', 'comic', 'manga'] },
+            status: { type: ['string', 'null'], enum: ['planned', 'watching', 'completed', 'dropped', 'on_hold', null] },
             rating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
             review: { type: ['string', 'null'] },
             season: { type: 'integer', minimum: 0 },
@@ -65,22 +65,24 @@ const logSchema = {
     body: {
         type: 'object',
         properties: {
-            watch_date: { type: ['string', 'null'] }, // Формат YYYY-MM-DD
-            rating: { type: ['number', 'null'], minimum: 0, maximum: 5 }
-        }
+            watch_date: { type: ['string', 'null'] },
+            rating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
+            comment: { type: ['string', 'null'] }
+        },
+        additionalProperties: false
     }
 };
 
 export default async function mediaRoutes(fastify, options) {
-    // Медіа
     fastify.get('/media', getAllMedia);
     fastify.get('/media/:id', getMediaById);
-    fastify.get('/media/tmdb/:tmdbId', getMediaByTmdbId); 
+    fastify.get('/media/tmdb/:tmdbId', getMediaByTmdbId);
+
     fastify.post('/media', { schema: createMediaSchema }, createMedia);
     fastify.patch('/media/:id', { schema: updateMediaSchema }, updateMedia);
     fastify.delete('/media/:id', deleteMedia);
 
-    // Історія переглядів (Логи)
+    // Маршрути Журналу
     fastify.get('/media/:id/logs', getMediaLogs);
     fastify.post('/media/:id/logs', { schema: logSchema }, createMediaLog);
     fastify.patch('/media/logs/:log_id', { schema: logSchema }, updateMediaLog);

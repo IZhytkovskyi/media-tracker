@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Film, Tv, Star, Plus, Trash2, X } from 'lucide-react';
+import { Search, Film, Tv, Star, Plus, Trash2, X, CalendarCheck } from 'lucide-react';
 
 export default function Home() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('all');
   const [mediaList, setMediaList] = useState([]);
   const [loading, setLoading] = useState(false);
-
+  
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -22,7 +22,7 @@ export default function Home() {
       const json = await res.json();
       if (json.data) setMediaList(json.data);
     } catch (err) {
-      console.error('Помилка:', err);
+      console.error('Помилка завантаження медіа:', err);
     } finally {
       setLoading(false);
     }
@@ -57,25 +57,29 @@ export default function Home() {
       });
       if (res.ok) fetchMedia();
     } catch (err) {
-      console.error('Помилка:', err);
+      console.error('Помилка оновлення:', err);
     }
   };
 
   const handleDeleteItem = async (e, id) => {
     e.stopPropagation();
-    if (!confirm('Видалити?')) return;
+    if (!confirm('Видалити цей елемент з бібліотеки?')) return;
     try {
       const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
       if (res.ok) fetchMedia();
     } catch (err) {
-      console.error('Помилка:', err);
+      console.error('Помилка видалення:', err);
     }
   };
 
   const handleSearchResultClick = (result) => {
     setIsSearchOpen(false);
-    // Відкриваємо універсальну сторінку
     navigate(`/media/${result.media_type}/${result.tmdb_id}`);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleDateString('uk-UA');
   };
 
   return (
@@ -87,38 +91,43 @@ export default function Home() {
           <button style={activeTab === 'movie' ? styles.activeTab : styles.tab} onClick={() => setActiveTab('movie')}><Film size={16} /> Фільми</button>
           <button style={activeTab === 'series' ? styles.activeTab : styles.tab} onClick={() => setActiveTab('series')}><Tv size={16} /> Серіали</button>
         </div>
-        <button style={styles.addButton} onClick={() => setIsSearchOpen(true)}><Plus size={18} /> Знайти</button>
+        <button style={styles.addButton} onClick={() => setIsSearchOpen(true)}><Plus size={18} /> Додати</button>
       </header>
 
       <main style={styles.main}>
         {loading ? <p>Завантаження...</p> : mediaList.length === 0 ? (
           <div style={styles.emptyState}>
-            <p>Колекція порожня.</p>
+            <p>Ваша бібліотека порожня. Натисніть "Додати", щоб знайти фільм чи серіал.</p>
           </div>
         ) : (
           <div style={styles.grid}>
             {mediaList.map(item => (
               <div 
                 key={item.id} 
-                style={styles.card} 
-                // Змінено навігацію на новий шлях з TMDB ID
+                style={styles.card}
                 onClick={() => navigate(`/media/${item.media_type}/${item.tmdb_id}`)}
               >
                 <div style={styles.posterWrapper}>
-                  {item.poster_path ? <img src={item.poster_path} alt={item.title} style={styles.poster} /> : <div style={styles.noPoster}>Немає</div>}
+                  {item.poster_path ? <img src={item.poster_path} alt={item.title} style={styles.poster} /> : <div style={styles.noPoster}>Немає постера</div>}
                   <div style={styles.typeBadge}>{item.media_type === 'movie' ? <Film size={12} /> : <Tv size={12} />}</div>
                 </div>
                 
                 <div style={styles.cardContent}>
-                  <h3 style={styles.title}>{item.title}</h3>
-                  <p style={styles.subtitle}>{item.release_date?.split('-')[0] || ''}</p>
+                  <h3 style={styles.title} title={item.title}>{item.title}</h3>
+                  
+                  {item.status === 'completed' && item.finish_date ? (
+                    <p style={styles.dateText}><CalendarCheck size={12} style={{marginRight: '4px'}}/>{formatDate(item.finish_date)}</p>
+                  ) : (
+                    <p style={styles.subtitle}>{item.release_date?.split('-')[0] || 'Без року'}</p>
+                  )}
                   
                   <select 
-                    value={item.status} 
-                    onChange={(e) => handleUpdateItem(e, item.id, { status: e.target.value })}
+                    value={item.status || ''} 
+                    onChange={(e) => handleUpdateItem(e, item.id, { status: e.target.value || null })}
                     onClick={(e) => e.stopPropagation()}
                     style={styles.select}
                   >
+                    <option value="">Без статусу</option>
                     <option value="planned">У планах</option>
                     <option value="watching">Дивлюсь</option>
                     <option value="completed">Переглянуто</option>
@@ -127,11 +136,12 @@ export default function Home() {
                   </select>
 
                   <div style={styles.ratingRow} onClick={(e) => e.stopPropagation()}>
-                    <Star size={16} color="#eab308" fill={item.rating ? "#eab308" : "none"} />
+                    <Star size={16} color={item.rating ? "#eab308" : "#475569"} fill={item.rating ? "#eab308" : "none"} />
                     <input 
                       type="number" min="0" max="5" step="0.5"
                       value={item.rating || ''} 
-                      onChange={(e) => handleUpdateItem(e, item.id, { rating: parseFloat(e.target.value) || 0 })}
+                      placeholder="-"
+                      onChange={(e) => handleUpdateItem(e, item.id, { rating: parseFloat(e.target.value) || null })}
                       style={styles.ratingInput}
                     />
                   </div>
@@ -144,16 +154,17 @@ export default function Home() {
         )}
       </main>
 
+      {/* Модалка Пошуку */}
       {isSearchOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modal}>
             <div style={styles.modalHeader}>
-              <h2>Пошук TMDB</h2>
+              <h2>Пошук у TMDB</h2>
               <button style={styles.closeButton} onClick={() => setIsSearchOpen(false)}><X size={20} /></button>
             </div>
             
             <form onSubmit={handleSearchTMDB} style={styles.searchForm}>
-              <input type="text" placeholder="Назва..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={styles.searchInput} autoFocus />
+              <input type="text" placeholder="Назва фільму чи серіалу..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={styles.searchInput} autoFocus />
               <button type="submit" style={styles.searchButton} disabled={searching}><Search size={18} /></button>
             </form>
 
@@ -203,12 +214,12 @@ const styles = {
   cardContent: { padding: '15px', display: 'flex', flexDirection: 'column', gap: '10px', flexGrow: 1 },
   title: { margin: 0, fontSize: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   subtitle: { margin: 0, fontSize: '12px', color: '#94a3b8' },
+  dateText: { margin: 0, fontSize: '12px', color: '#2ecc71', display: 'flex', alignItems: 'center', fontWeight: '500' },
   select: { background: '#0f172a', color: '#fff', border: '1px solid #334155', padding: '6px', borderRadius: '6px', cursor: 'pointer' },
   ratingRow: { display: 'flex', alignItems: 'center', gap: '6px' },
   ratingInput: { width: '50px', background: '#0f172a', color: '#fff', border: '1px solid #334155', padding: '4px', borderRadius: '4px', textAlign: 'center' },
   deleteButton: { marginTop: 'auto', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', alignSelf: 'flex-end', padding: '4px' },
   emptyState: { textAlign: 'center', padding: '60px 0', color: '#94a3b8' },
-  
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modal: { background: '#1e293b', width: '100%', maxWidth: '600px', borderRadius: '12px', padding: '20px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' },

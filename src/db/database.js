@@ -8,26 +8,28 @@ const db = new Database(process.env.DB_FILE || './src/db/tracker.db', {
 });
 
 db.pragma('journal_mode = WAL');
-// Вмикаємо підтримку зовнішніх ключів для каскадного видалення логів
 db.pragma('foreign_keys = ON');
 
 const initDB = () => {
-    // 1. Таблиця медіа
+    // 1. Таблиця основних тайтлів (Фільми, Серіали, Книги, Комікси, Манґа, Ігри)
     const createMediaTable = `
         CREATE TABLE IF NOT EXISTS media_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tmdb_id INTEGER UNIQUE,
             imdb_id TEXT UNIQUE,
+            external_id TEXT,
             title TEXT NOT NULL,
             original_title TEXT,
-            media_type TEXT NOT NULL CHECK(media_type IN ('movie', 'series')),
-            status TEXT NOT NULL DEFAULT 'planned' CHECK(status IN ('planned', 'watching', 'completed', 'dropped', 'on_hold')),
+            media_type TEXT NOT NULL CHECK(media_type IN ('movie', 'series', 'book', 'game', 'comic', 'manga')),
+            status TEXT CHECK(status IS NULL OR status IN ('planned', 'watching', 'completed', 'dropped', 'on_hold')),
             rating REAL,
             review TEXT,
             season INTEGER DEFAULT 0,
             episode INTEGER DEFAULT 0,
+            current_progress INTEGER DEFAULT 0,
             total_seasons INTEGER DEFAULT 0,
             total_episodes INTEGER DEFAULT 0,
+            total_progress INTEGER DEFAULT 0,
             genres TEXT,
             poster_path TEXT,
             backdrop_path TEXT,
@@ -40,12 +42,13 @@ const initDB = () => {
     `;
     db.exec(createMediaTable);
 
-    // 2. НОВА ТАБЛИЦЯ: Історія переглядів (Логи)
+    // 2. Таблиця логів переглядів/прочитань/проходження
     const createLogsTable = `
         CREATE TABLE IF NOT EXISTS watch_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             media_id INTEGER NOT NULL,
-            watch_date TEXT, -- YYYY-MM-DD
+            watch_date TEXT,
+            comment TEXT,
             rating REAL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (media_id) REFERENCES media_items (id) ON DELETE CASCADE
@@ -53,27 +56,18 @@ const initDB = () => {
     `;
     db.exec(createLogsTable);
 
-    // 3. Перевірка та додавання нових колонок у media_items (для сумісності зі старими базами)
-    const tableInfo = db.pragma("table_info(media_items)");
-    const columnNames = tableInfo.map(col => col.name);
-    
-    const columnsToAdd = [
-        { name: 'original_title', type: 'TEXT' },
-        { name: 'total_seasons', type: 'INTEGER DEFAULT 0' },
-        { name: 'total_episodes', type: 'INTEGER DEFAULT 0' },
-        { name: 'genres', type: 'TEXT' },
-        { name: 'backdrop_path', type: 'TEXT' },
-        { name: 'release_date', type: 'TEXT' }
-    ];
+    // 3. Перевірка та міграція колонок у watch_logs
+    const logTableInfo = db.pragma("table_info(watch_logs)");
+    const logColumnNames = logTableInfo.map(col => col.name);
 
-    columnsToAdd.forEach(col => {
-        if (!columnNames.includes(col.name)) {
-            console.log(`Додавання колонки: ${col.name}`);
-            db.exec(`ALTER TABLE media_items ADD COLUMN ${col.name} ${col.type}`);
-        }
-    });
+    if (!logColumnNames.includes('watch_date')) {
+        db.exec(`ALTER TABLE watch_logs ADD COLUMN watch_date TEXT`);
+    }
+    if (!logColumnNames.includes('comment')) {
+        db.exec(`ALTER TABLE watch_logs ADD COLUMN comment TEXT`);
+    }
 
-    // 4. Тригер для оновлення часу (updated_at)
+    // 4. Тригер оновлення часу
     const createUpdateTrigger = `
         CREATE TRIGGER IF NOT EXISTS update_media_items_time 
         AFTER UPDATE ON media_items
@@ -82,8 +76,8 @@ const initDB = () => {
         END;
     `;
     db.exec(createUpdateTrigger);
-    
-    console.log('База даних ініціалізована.');
+
+    console.log('База даних успішно ініціалізована.');
 };
 
 initDB();
