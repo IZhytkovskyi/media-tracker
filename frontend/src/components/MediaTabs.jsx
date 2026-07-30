@@ -1,10 +1,15 @@
+// frontend/src/components/MediaTabs.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronDown, Globe, Database, ExternalLink, Link as LinkIcon, Tv, Trash2, Calendar, Star, Pen, Plus, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { 
+  ChevronDown, Globe, Database, ExternalLink, Link as LinkIcon, Tv, 
+  Trash2, Calendar, Star, Pen, Plus, X, ChevronLeft, ChevronRight, 
+  Popcorn, Disc, MonitorPlay, Video, Filter 
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { styles } from '../styles/mediaDetailStyles';
 
 const getFlagEmoji = (countryCode) => {
-  if (!countryCode || countryCode.length !== 2) return '🌐';
+  if (!countryCode || countryCode.length !== 2) return '';
   const codePoints = countryCode
     .toUpperCase()
     .split('')
@@ -48,10 +53,11 @@ const getLocalDateString = () => {
   return `${year}-${month}-${day}`;
 };
 
-// --- 1. Вкладка ГОЛОВНЕ ---
+// --- 1. Вкладка "Головна" ---
 export function TabMain({ media, tmdbData }) {
   const navigate = useNavigate();
   const releaseYear = media.release_date ? media.release_date.split('-')[0] : '';
+
   const formatRuntime = (minutes) => {
     if (!minutes) return null;
     return `${minutes} хв.`;
@@ -79,14 +85,6 @@ export function TabMain({ media, tmdbData }) {
         {tmdbData?.tagline && <p style={styles.tagline}>"{tmdbData.tagline}"</p>}
       </div>
 
-      <div style={styles.genresContainer}>
-        {media.genres && media.genres.length > 0 ? (
-          media.genres.map((genre, idx) => <span key={idx} style={styles.genreBadge}>{genre}</span>)
-        ) : (
-          <span style={styles.genreBadge}>Без жанру</span>
-        )}
-      </div>
-
       <div style={styles.detailsBox}>
         <InfoRow label="Країна:" value={tmdbData?.production_countries?.map(getCountryName).join(', ')} />
         <InfoRow label="Мова:" value={getLanguageName(tmdbData?.original_language)} />
@@ -98,15 +96,14 @@ export function TabMain({ media, tmdbData }) {
             <span>{formatDate(tmdbData.world_premiere)}</span>
           )}
         </InfoRow>
-
         <InfoRow label="Прем'єра в Україні:" value={formatDate(tmdbData?.ua_premiere)} />
-        <InfoRow label="Прем'єра у цифрі:" value={formatDate(tmdbData?.digital_premiere)} />
+        <InfoRow label="Цифрова прем'єра:" value={formatDate(tmdbData?.digital_premiere)} />
         <InfoRow label="Бюджет:" value={formatCurrency(tmdbData?.budget)} />
         <InfoRow label="Збори:" value={formatCurrency(tmdbData?.revenue)} />
         <InfoRow label="Студії:" value={tmdbData?.production_companies?.join(', ')} />
         
         {tmdbData?.alternative_titles && tmdbData.alternative_titles.length > 0 && (
-          <InfoRow label="Альтернативні назви:">
+          <InfoRow label="Також відомий як:">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {tmdbData.alternative_titles.map((titleStr, idx) => {
                  const match = titleStr.match(/(.+?)\s*\((\w+)\)$/);
@@ -121,6 +118,14 @@ export function TabMain({ media, tmdbData }) {
               })}
             </div>
           </InfoRow>
+        )}
+      </div>
+
+      <div style={styles.genresContainer}>
+        {media.genres && media.genres.length > 0 ? (
+          media.genres.map((genre, idx) => <span key={idx} style={styles.genreBadge}>{genre}</span>)
+        ) : (
+          <span style={styles.genreBadge}>Немає жанрів</span>
         )}
       </div>
 
@@ -142,7 +147,7 @@ export function TabMain({ media, tmdbData }) {
               >
                 <img src={season.poster_path || 'https://via.placeholder.com/105x155?text=No+Poster'} alt={season.name} style={styles.personPhoto} />
                 <div style={styles.personName}>{season.name}</div>
-                <div style={styles.personRole}>{season.episode_count} серій</div>
+                <div style={styles.personRole}>{season.episode_count} епізодів</div>
               </div>
             ))}
           </div>
@@ -154,7 +159,11 @@ export function TabMain({ media, tmdbData }) {
           <h3 style={styles.sectionTitle}>У ролях:</h3>
           <div className="custom-scroll" style={styles.horizontalScroll}>
             {tmdbData.cast.slice(0, 12).map(actor => (
-              <div key={`actor-min-${actor.id}`} style={styles.personCard}>
+              <div 
+                key={`actor-min-${actor.id}`} 
+                style={{...styles.personCard, cursor: 'pointer'}} 
+                onClick={() => navigate(`/person/${actor.id}`)}
+              >
                 <img src={actor.profile_path || 'https://via.placeholder.com/105x155?text=No+Photo'} alt={actor.name} style={styles.personPhoto} />
                 <div style={styles.personName}>{actor.name}</div>
                 <div style={styles.personRole}>{actor.character}</div>
@@ -172,8 +181,12 @@ export function TabMain({ media, tmdbData }) {
               .filter(c => ['Director', 'Creator', 'Screenplay', 'Writer', 'Director of Photography', 'Original Music Composer'].includes(c.original_job))
               .slice(0, 12)
               .map((member, idx) => (
-              <div key={`crew-min-${member.id}-${idx}`} style={styles.personCard}>
-                <img src={member.profile_path || 'https://via.placeholder.com/105x155?text=Фото'} alt={member.name} style={styles.personPhoto} />
+              <div 
+                key={`crew-min-${member.id}-${idx}`} 
+                style={{...styles.personCard, cursor: 'pointer'}}
+                onClick={() => navigate(`/person/${member.id}`)}
+              >
+                <img src={member.profile_path || 'https://via.placeholder.com/105x155?text=Немає+фото'} alt={member.name} style={styles.personPhoto} />
                 <div style={styles.personName}>{member.name}</div>
                 <div style={styles.personRole}>{member.job}</div>
               </div>
@@ -185,8 +198,9 @@ export function TabMain({ media, tmdbData }) {
   );
 }
 
-// --- 2. Вкладка АКТОРИ ТА КОМАНДА ---
+// --- 2. Вкладка "Знімальна група" ---
 export function TabActors({ tmdbData }) {
+  const navigate = useNavigate();
   const [activeCrewTab, setActiveCrewTab] = useState('cast');
   const [visibleCount, setVisibleCount] = useState(14); 
   const ITEMS_PER_PAGE = 14;
@@ -201,9 +215,9 @@ export function TabActors({ tmdbData }) {
       'Режисура': ['Director', 'Creator'],
       'Сценарій': ['Screenplay', 'Writer', 'Story'],
       'Оператори': ['Director of Photography', 'Camera Operator'],
-      'Музика': ['Original Music Composer', 'Music'],
+      'Композитори': ['Original Music Composer', 'Music'],
       'Продюсери': ['Producer', 'Executive Producer', 'Co-Producer'],
-      'Художнє оформлення': ['Production Design', 'Art Direction', 'Set Decoration'],
+      'Художники': ['Production Design', 'Art Direction', 'Set Decoration'],
       'Монтаж': ['Editor'],
       'Костюми та грим': ['Costume Design', 'Makeup Artist', 'Hairstylist'],
       'Звук': ['Sound Designer', 'Original Music Composer']
@@ -229,7 +243,6 @@ export function TabActors({ tmdbData }) {
     });
 
     Array.from(ungroupedJobs).sort().forEach(job => tabs.push({ id: job, label: job, jobs: [job] }));
-
     return tabs;
   }, [tmdbData]);
 
@@ -262,7 +275,11 @@ export function TabActors({ tmdbData }) {
         <>
           <div style={styles.peopleGrid}>
             {paginatedCrew.map((person, idx) => (
-              <div key={`${activeCrewTab}-${person.id}-${idx}`} style={styles.gridPersonCard}>
+              <div 
+                key={`${activeCrewTab}-${person.id}-${idx}`} 
+                style={{...styles.gridPersonCard, cursor: 'pointer'}}
+                onClick={() => navigate(`/person/${person.id}`)}
+              >
                 <img src={person.profile_path || 'https://via.placeholder.com/105x155?text=No+Photo'} alt={person.name} style={styles.personPhoto} />
                 <div style={styles.personName}>{person.name}</div>
                 <div style={styles.personRole}>{person.character || person.job}</div>
@@ -277,24 +294,28 @@ export function TabActors({ tmdbData }) {
             </div>
           )}
         </>
-      ) : <p style={styles.emptyText}>Немає даних.</p>}
+      ) : <p style={styles.emptyText}>Немає інформації.</p>}
     </>
   );
 }
 
-// --- 3. Вкладка КАДРИ (З Lightbox) ---
+// --- 3. Вкладка "Кадри" ---
 export function TabShots({ tmdbData }) {
   const [activeShotsTab, setActiveShotsTab] = useState('backdrops');
   const [visibleImageCount, setVisibleImageCount] = useState(12);
   const [lightboxIndex, setLightboxIndex] = useState(null);
+  const [filterLang, setFilterLang] = useState('all');
 
   const IMAGES_PER_PAGE = 12;
 
-  useEffect(() => { setVisibleImageCount(IMAGES_PER_PAGE); }, [activeShotsTab]);
+  useEffect(() => { 
+    setVisibleImageCount(IMAGES_PER_PAGE); 
+    setFilterLang('all');
+  }, [activeShotsTab]);
 
   const imageSubTabs = useMemo(() => {
     const tabs = [];
-    if (tmdbData?.images?.backdrops?.length > 0) tabs.push({ id: 'backdrops', label: 'Кадри' });
+    if (tmdbData?.images?.backdrops?.length > 0) tabs.push({ id: 'backdrops', label: 'Фони' });
     if (tmdbData?.images?.posters?.length > 0) tabs.push({ id: 'posters', label: 'Постери' });
     if (tmdbData?.images?.logos?.length > 0) tabs.push({ id: 'logos', label: 'Логотипи' });
     return tabs;
@@ -306,37 +327,126 @@ export function TabShots({ tmdbData }) {
     }
   }, [imageSubTabs, activeShotsTab]);
 
-  const displayedImages = tmdbData?.images?.[activeShotsTab] || [];
+  const rawImages = tmdbData?.images?.[activeShotsTab] || [];
+
+  const availableLangs = useMemo(() => {
+    const langs = new Set(rawImages.map(img => img.iso_639_1 || 'none'));
+    return Array.from(langs).sort();
+  }, [rawImages]);
+
+  const displayedImages = useMemo(() => {
+    let filtered = [...rawImages];
+    
+    if (filterLang !== 'all') {
+      filtered = filtered.filter(img => (img.iso_639_1 || 'none') === filterLang);
+    }
+
+    const originalLang = tmdbData?.original_language;
+
+    filtered.sort((a, b) => {
+      // Пріоритетне сортування мов (застосовується найперше до постерів)
+      if (activeShotsTab === 'posters') {
+        const getPriority = (lang) => {
+          if (lang === 'uk') return 1;
+          if (lang === 'en') return 2;
+          if (lang === originalLang) return 3;
+          if (!lang || lang === 'none' || lang === 'null') return 4;
+          return 5;
+        };
+
+        const pA = getPriority(a.iso_639_1);
+        const pB = getPriority(b.iso_639_1);
+
+        if (pA !== pB) return pA - pB;
+      }
+
+      // Якщо мови однакові (або це не постери), сортуємо за оцінкою TMDB (від найвищої до найнижчої)
+      return (b.vote_average || 0) - (a.vote_average || 0);
+    });
+
+    return filtered;
+  }, [rawImages, filterLang, activeShotsTab, tmdbData]);
+
   const paginatedImages = displayedImages.slice(0, visibleImageCount);
   const hasMoreImages = visibleImageCount < displayedImages.length;
 
   return (
     <>
-      {imageSubTabs.length > 0 ? (
-        <div className="sub-tabs-container">
-          {imageSubTabs.map(tab => (
-            <button key={tab.id} className={`sub-tab ${activeShotsTab === tab.id ? 'active' : ''}`} onClick={() => setActiveShotsTab(tab.id)}>
-              {tab.label} ({tmdbData?.images?.[tab.id]?.length || 0})
-            </button>
-          ))}
-        </div>
-      ) : <p style={styles.emptyText}>Кадри відсутні.</p>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+        {/* Підвкладки */}
+        {imageSubTabs.length > 0 ? (
+          <div className="sub-tabs-container" style={{ marginBottom: 0 }}>
+            {imageSubTabs.map(tab => (
+              <button key={tab.id} className={`sub-tab ${activeShotsTab === tab.id ? 'active' : ''}`} onClick={() => setActiveShotsTab(tab.id)}>
+                {tab.label} ({tmdbData?.images?.[tab.id]?.length || 0})
+              </button>
+            ))}
+          </div>
+        ) : <p style={styles.emptyText}>Немає зображень.</p>}
 
-      {paginatedImages.length > 0 && (
+        {/* Кастомний фільтр */}
+        {rawImages.length > 0 && (
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+            <div style={{ position: 'absolute', left: '14px', pointerEvents: 'none', display: 'flex', color: '#38bdf8' }}>
+              <Filter size={16} />
+            </div>
+            <select
+              value={filterLang}
+              onChange={(e) => setFilterLang(e.target.value)}
+              style={{ 
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                background: 'rgba(56, 189, 248, 0.05)', 
+                color: '#38bdf8', 
+                border: '1px solid rgba(56, 189, 248, 0.2)', 
+                padding: '8px 40px', 
+                borderRadius: '20px', 
+                fontSize: '13px', 
+                fontWeight: '600',
+                cursor: 'pointer',
+                outline: 'none',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+              }}
+              onMouseEnter={(e) => {
+                 e.target.style.background = 'rgba(56, 189, 248, 0.1)';
+                 e.target.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                 e.target.style.background = 'rgba(56, 189, 248, 0.05)';
+                 e.target.style.borderColor = 'rgba(56, 189, 248, 0.2)';
+              }}
+            >
+              <option value="all" style={{ background: '#1e293b', color: '#f8fafc' }}>Всі мови</option>
+              {availableLangs.map(lang => (
+                <option key={lang} value={lang} style={{ background: '#1e293b', color: '#f8fafc' }}>
+                  {lang === 'none' ? 'Без тексту' : lang.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <div style={{ position: 'absolute', right: '14px', pointerEvents: 'none', display: 'flex', color: '#38bdf8' }}>
+              <ChevronDown size={16} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {paginatedImages.length > 0 ? (
         <>
           <div style={{
             ...styles.imagesGrid, 
             gridTemplateColumns: activeShotsTab === 'posters' ? 'repeat(auto-fill, minmax(160px, 1fr))' : 'repeat(auto-fill, minmax(280px, 1fr))'
           }}>
-            {paginatedImages.map((imgPath, idx) => (
+            {paginatedImages.map((img, idx) => (
               <div key={`${activeShotsTab}-${idx}`} className="image-card" style={{ cursor: 'pointer' }} onClick={() => setLightboxIndex(idx)}>
                 <img 
-                  src={`https://image.tmdb.org/t/p/${activeShotsTab === 'backdrops' ? 'w780' : 'w500'}${imgPath}`} 
-                  alt={`Зображення ${idx}`} className={`img-${activeShotsTab}`} loading="lazy" 
+                  src={`https://image.tmdb.org/t/p/${activeShotsTab === 'backdrops' ? 'w780' : 'w500'}${img.file_path}`} 
+                  alt={`Кадр ${idx}`} className={`img-${activeShotsTab}`} loading="lazy" 
                 />
               </div>
             ))}
           </div>
+          
           {hasMoreImages && (
             <div style={styles.loadMoreContainer}>
               <button style={styles.loadMoreButton} onClick={() => setVisibleImageCount(p => p + IMAGES_PER_PAGE)}>
@@ -345,7 +455,9 @@ export function TabShots({ tmdbData }) {
             </div>
           )}
         </>
-      )}
+      ) : rawImages.length > 0 ? (
+        <p style={styles.emptyText}>За заданими фільтрами результатів не знайдено.</p>
+      ) : null}
 
       {lightboxIndex !== null && (
         <div style={{
@@ -356,16 +468,19 @@ export function TabShots({ tmdbData }) {
             onClick={() => setLightboxIndex(null)}
             style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', zIndex: 10000 }}
           ><X size={36} /></button>
+          
           <button 
             onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => Math.max(prev - 1, 0)); }}
             style={{ position: 'absolute', left: '20px', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '15px', borderRadius: '50%', cursor: lightboxIndex === 0 ? 'default' : 'pointer', opacity: lightboxIndex === 0 ? 0.3 : 1 }}
             disabled={lightboxIndex === 0}
           ><ChevronLeft size={32} /></button>
+          
           <img 
-            src={`https://image.tmdb.org/t/p/original${displayedImages[lightboxIndex]}`} 
-            alt="Кадр" 
+            src={`https://image.tmdb.org/t/p/original${displayedImages[lightboxIndex].file_path}`} 
+            alt="Повний розмір"
             style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px' }}
           />
+
           <button 
             onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => Math.min(prev + 1, displayedImages.length - 1)); }}
             style={{ position: 'absolute', right: '20px', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '15px', borderRadius: '50%', cursor: lightboxIndex === displayedImages.length - 1 ? 'default' : 'pointer', opacity: lightboxIndex === displayedImages.length - 1 ? 0.3 : 1 }}
@@ -377,32 +492,42 @@ export function TabShots({ tmdbData }) {
   );
 }
 
-// --- 4. Вкладка ДАТИ РЕЛІЗІВ ---
+// --- 4. Вкладка "Прем'єри" ---
 export function TabPremiere({ tmdbData }) {
-  const releaseTypeNames = {
-    1: 'Прем\'єра', 2: 'Кінотеатри (обмежений)', 3: 'Кінотеатри',
-    4: 'Цифровий реліз', 5: 'Фізичні носії', 6: 'ТБ'
+  const getReleaseTypeInfo = (type) => {
+    switch (type) {
+      case 1: return { label: 'Світова прем\'єра', icon: <Star size={14} />, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' };
+      case 2: return { label: 'У кіно (Обмежено)', icon: <Video size={14} />, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' };
+      case 3: return { label: 'У кіно', icon: <Popcorn size={14} />, color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' };
+      case 4: return { label: 'Цифровий реліз', icon: <MonitorPlay size={14} />, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' };
+      case 5: return { label: 'На фізичних носіях', icon: <Disc size={14} />, color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)' };
+      case 6: return { label: 'На ТБ', icon: <Tv size={14} />, color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' };
+      default: return { label: 'Реліз', icon: <Calendar size={14} />, color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' };
+    }
   };
 
   if (!tmdbData?.releases || tmdbData.releases.length === 0) {
-    return <p style={styles.emptyText}>Інформація про релізи відсутня.</p>;
+    return <p style={styles.emptyText}>Немає інформації про релізи.</p>;
   }
 
   const productionCountries = tmdbData.production_countries || [];
+
   const sortedReleases = [...tmdbData.releases].sort((a, b) => {
     if (a.country === 'UA') return -1;
     if (b.country === 'UA') return 1;
+    
     const aIsProd = productionCountries.includes(a.country);
     const bIsProd = productionCountries.includes(b.country);
     if (aIsProd && !bIsProd) return -1;
     if (!aIsProd && bIsProd) return 1;
+
     return getCountryName(a.country).localeCompare(getCountryName(b.country), 'uk');
   });
 
   return (
     <div style={styles.premiereContainer}>
-      <h3 style={styles.sectionTitle}>Дати релізів за країнами</h3>
-      <div style={{ ...styles.countryGrid, gap: '15px' }}>
+      <h3 style={styles.sectionTitle}>Дати виходу</h3>
+      <div style={{ ...styles.countryGrid, gap: '20px' }}>
         {sortedReleases.map((countryRelease) => {
           const isUkraine = countryRelease.country === 'UA';
           const isProducer = productionCountries.includes(countryRelease.country);
@@ -410,28 +535,39 @@ export function TabPremiere({ tmdbData }) {
           return (
             <div key={countryRelease.country} style={{ 
               ...styles.countryCard, 
-              backgroundColor: isUkraine ? 'rgba(56, 189, 248, 0.05)' : '#111827',
-              borderColor: isUkraine ? '#38bdf8' : (isProducer ? '#475569' : '#1e293b')
+              backgroundColor: isUkraine ? 'rgba(56, 189, 248, 0.04)' : '#111827',
+              borderColor: isUkraine ? '#0284c7' : (isProducer ? '#334155' : '#1e293b'),
+              boxShadow: isUkraine ? '0 4px 12px rgba(2, 132, 199, 0.1)' : 'none'
             }}>
-              <div style={{ ...styles.countryCardHeader, borderBottomColor: isUkraine ? 'rgba(56, 189, 248, 0.2)' : '#334155' }}>
-                <span style={{ fontSize: '24px', lineHeight: '1' }}>{getFlagEmoji(countryRelease.country)}</span>
-                <h4 style={{ ...styles.countryName, fontSize: '16px', fontWeight: isUkraine ? 'bold' : 'normal' }}>
-                  {getCountryName(countryRelease.country)}
-                  {isProducer && !isUkraine && <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '8px' }}>(Виробник)</span>}
-                </h4>
+              <div style={{ ...styles.countryCardHeader, borderBottom: `1px solid ${isUkraine ? 'rgba(56, 189, 248, 0.2)' : '#1e293b'}`, paddingBottom: '12px' }}>
+                <span style={{ fontSize: '28px', lineHeight: '1' }}>{getFlagEmoji(countryRelease.country)}</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h4 style={{ ...styles.countryName, fontSize: '16px', fontWeight: isUkraine ? 'bold' : '600', color: isUkraine ? '#bae6fd' : '#f8fafc' }}>
+                    {getCountryName(countryRelease.country)}
+                  </h4>
+                  {isProducer && !isUkraine && <span style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Країна-виробник</span>}
+                </div>
               </div>
-              <div style={styles.datesList}>
-                {[...countryRelease.dates].sort((a, b) => new Date(a.date) - new Date(b.date)).map((dateItem, idx) => (
-                  <div key={idx} style={{ ...styles.dateItem, padding: '8px 0', borderBottom: idx !== countryRelease.dates.length - 1 ? '1px dashed #1e293b' : 'none' }}>
-                    <div style={styles.dateTypeWrapper}>
-                      <span style={{ ...styles.dateTypeBadge, backgroundColor: dateItem.type === 4 ? '#8b5cf6' : (dateItem.type === 3 ? '#2ecc71' : '#475569'), color: '#fff' }}>
-                        {releaseTypeNames[dateItem.type] || 'Інше'}
-                      </span>
-                      {dateItem.note && <span style={styles.dateNote}>({dateItem.note})</span>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {[...countryRelease.dates].sort((a, b) => new Date(a.date) - new Date(b.date)).map((dateItem, idx) => {
+                  const typeInfo = getReleaseTypeInfo(dateItem.type);
+                  const isLast = idx === countryRelease.dates.length - 1;
+                  
+                  return (
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', padding: '12px 0', borderBottom: isLast ? 'none' : '1px solid #1e293b' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: typeInfo.color, backgroundColor: typeInfo.bg, padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
+                          {typeInfo.icon}
+                          <span>{typeInfo.label}</span>
+                        </div>
+                        {dateItem.note && <span style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic', textAlign: 'right', maxWidth: '50%' }}>{dateItem.note}</span>}
+                      </div>
+                      <div style={{ color: '#e2e8f0', fontSize: '15px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {formatDate(dateItem.date)}
+                      </div>
                     </div>
-                    <div style={{ ...styles.dateValue, fontSize: '14px' }}>{formatDate(dateItem.date)}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
@@ -441,12 +577,14 @@ export function TabPremiere({ tmdbData }) {
   );
 }
 
-// --- 5. Вкладка ДЖЕРЕЛА ---
+// --- 5. Вкладка "Джерела" ---
 export function TabSources({ tmdbData }) {
-  if (!tmdbData?.external_links) return <p style={styles.emptyText}>Посилання відсутні.</p>;
+  if (!tmdbData?.external_links) return <p style={styles.emptyText}>Немає зовнішніх посилань.</p>;
+  
   const links = tmdbData.external_links;
+  
   const sourceGroups = [
-    { title: 'Офіційні ресурси', icon: <Globe size={20} color="#38bdf8" />, items: [{ label: 'Офіційний сайт', url: links.homepage, icon: <LinkIcon size={18} /> }] },
+    { title: 'Офіційні', icon: <Globe size={20} color="#38bdf8" />, items: [{ label: 'Офіційний сайт', url: links.homepage, icon: <LinkIcon size={18} /> }] },
     { title: 'Бази даних', icon: <Database size={20} color="#facc15" />, items: [{ label: 'TMDB', url: links.tmdb, icon: <Tv size={18} /> }, { label: 'IMDb', url: links.imdb, icon: <ExternalLink size={18} /> }, { label: 'Wikidata', url: links.wikidata, icon: <ExternalLink size={18} /> }] },
     { title: 'Соціальні мережі', icon: <ExternalLink size={20} color="#2ecc71" />, items: [{ label: 'Instagram', url: links.instagram, icon: <ExternalLink size={18} /> }, { label: 'Twitter (X)', url: links.twitter, icon: <ExternalLink size={18} /> }, { label: 'Facebook', url: links.facebook, icon: <ExternalLink size={18} /> }] }
   ];
@@ -456,6 +594,7 @@ export function TabSources({ tmdbData }) {
       {sourceGroups.map((group, gIdx) => {
         const validItems = group.items.filter(item => item.url);
         if (validItems.length === 0) return null;
+        
         return (
           <div key={gIdx} style={styles.sourceGroup}>
             <div style={styles.sourceGroupHeader}>{group.icon}<h3 style={styles.sectionTitle} className="mb-0">{group.title}</h3></div>
@@ -467,14 +606,14 @@ export function TabSources({ tmdbData }) {
   );
 }
 
-// --- 6. Вкладка ІСТОРІЯ ПЕРЕГЛЯДУ ---
+// --- 6. Вкладка "Історія" ---
 export function TabHistory({ logs, onDelete, onCreate, onUpdate }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLogId, setEditingLogId] = useState(null);
   const [formData, setFormData] = useState({ watch_date: '', rating: '' });
 
   const formatDateStr = (dateString) => {
-    if (!dateString) return 'Без дати';
+    if (!dateString) return 'Невідомо';
     return new Date(dateString).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
@@ -499,7 +638,7 @@ export function TabHistory({ logs, onDelete, onCreate, onUpdate }) {
       watch_date: formData.watch_date || getLocalDateString(), 
       rating: formData.rating === '' ? null : parseFloat(formData.rating) 
     };
-
+    
     if (editingLogId) {
       onUpdate(editingLogId, payload);
     } else {
@@ -513,12 +652,12 @@ export function TabHistory({ logs, onDelete, onCreate, onUpdate }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={styles.sectionTitle} className="mb-0">Історія переглядів</h3>
         <button onClick={openAddModal} style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid #38bdf8', color: '#38bdf8', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 'bold' }}>
-          <Plus size={16} /> Додати запис
+          <Plus size={16} /> Додати
         </button>
       </div>
 
       {(!logs || logs.length === 0) ? (
-        <p style={styles.emptyText}>Записи відсутні. Натисніть "Додати запис", щоб внести свій перший перегляд.</p>
+        <p style={styles.emptyText}>Ще немає записів про перегляд.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
           {logs.map((log, index) => (
@@ -540,6 +679,7 @@ export function TabHistory({ logs, onDelete, onCreate, onUpdate }) {
                   </div>
                 </div>
               </div>
+              
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => openEditModal(log)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#a3a3a3' }}><Pen size={18} /></button>
                 <button onClick={() => onDelete(log.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#ef4444' }}><Trash2 size={18} /></button>
@@ -552,14 +692,14 @@ export function TabHistory({ logs, onDelete, onCreate, onUpdate }) {
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: '#1e293b', padding: '25px', borderRadius: '12px', width: '100%', maxWidth: '400px', border: '1px solid #334155' }}>
-            <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '20px' }}>{editingLogId ? 'Редагувати перегляд' : 'Додати перегляд'}</h3>
+            <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '20px' }}>{editingLogId ? 'Редагувати запис' : 'Додати запис'}</h3>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ color: '#94a3b8', fontSize: '13px' }}>Дата перегляду</label>
                 <input type="date" value={formData.watch_date} onChange={e => setFormData({...formData, watch_date: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Оцінка (0 - 5, необумовлено)</label>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Оцінка (0 - 5, необов'язково)</label>
                 <input type="number" step="0.5" min="0" max="5" placeholder="Наприклад: 4.5" value={formData.rating} onChange={e => setFormData({...formData, rating: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
