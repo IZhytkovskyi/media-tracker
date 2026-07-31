@@ -4,14 +4,14 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const db = new Database(process.env.DB_FILE || './src/db/tracker.db', {
-    verbose: console.log
+    // Прибрано verbose: console.log
 });
 
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 const initDB = () => {
-    // 1. Таблиця основних тайтлів (Фільми, Серіали, Книги, Комікси, Манґа, Ігри)
+    // 1. Таблиця медіа
     const createMediaTable = `
         CREATE TABLE IF NOT EXISTS media_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +42,7 @@ const initDB = () => {
     `;
     db.exec(createMediaTable);
 
-    // 2. Таблиця логів переглядів/прочитань/проходження
+    // 2. Таблиця логів перегляду
     const createLogsTable = `
         CREATE TABLE IF NOT EXISTS watch_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +56,7 @@ const initDB = () => {
     `;
     db.exec(createLogsTable);
 
-    // 3. Перевірка та міграція колонок у watch_logs
+    // 3. Міграції для watch_logs
     const logTableInfo = db.pragma("table_info(watch_logs)");
     const logColumnNames = logTableInfo.map(col => col.name);
 
@@ -70,14 +70,14 @@ const initDB = () => {
     // 4. Тригер оновлення часу
     const createUpdateTrigger = `
         CREATE TRIGGER IF NOT EXISTS update_media_items_time 
-        AFTER UPDATE ON media_items
+         AFTER UPDATE ON media_items
         BEGIN
             UPDATE media_items SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END;
     `;
     db.exec(createUpdateTrigger);
 
-    console.log('База даних успішно ініціалізована.');
+    console.log('База даних ініціалізована успішно.');
 };
 
 initDB();
