@@ -4,23 +4,23 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const db = new Database(process.env.DB_FILE || './src/db/tracker.db', {
-    // Прибрано verbose: console.log
+    // verbose: console.log
 });
 
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 const initDB = () => {
-    // 1. Таблиця медіа
     const createMediaTable = `
         CREATE TABLE IF NOT EXISTS media_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tmdb_id INTEGER UNIQUE,
+            tmdb_id INTEGER,
             imdb_id TEXT UNIQUE,
-            external_id TEXT,
+            external_id TEXT UNIQUE,
+            parent_id INTEGER REFERENCES media_items(id) ON DELETE CASCADE,
             title TEXT NOT NULL,
             original_title TEXT,
-            media_type TEXT NOT NULL CHECK(media_type IN ('movie', 'series', 'book', 'game', 'comic', 'manga')),
+            media_type TEXT NOT NULL CHECK(media_type IN ('movie', 'series', 'season', 'episode', 'book', 'game', 'comic', 'manga')),
             status TEXT CHECK(status IS NULL OR status IN ('planned', 'watching', 'completed', 'dropped', 'on_hold')),
             rating REAL,
             review TEXT,
@@ -42,12 +42,12 @@ const initDB = () => {
     `;
     db.exec(createMediaTable);
 
-    // 2. Таблиця логів перегляду
     const createLogsTable = `
         CREATE TABLE IF NOT EXISTS watch_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             media_id INTEGER NOT NULL,
-            watch_date TEXT,
+            start_date TEXT,
+            finish_date TEXT,
             comment TEXT,
             rating REAL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -56,28 +56,31 @@ const initDB = () => {
     `;
     db.exec(createLogsTable);
 
-    // 3. Міграції для watch_logs
+    const mediaTableInfo = db.pragma("table_info(media_items)");
+    const mediaColumnNames = mediaTableInfo.map(col => col.name);
+    if (!mediaColumnNames.includes('external_id')) db.exec(`ALTER TABLE media_items ADD COLUMN external_id TEXT UNIQUE`);
+    if (!mediaColumnNames.includes('parent_id')) db.exec(`ALTER TABLE media_items ADD COLUMN parent_id INTEGER REFERENCES media_items(id) ON DELETE CASCADE`);
+
     const logTableInfo = db.pragma("table_info(watch_logs)");
     const logColumnNames = logTableInfo.map(col => col.name);
-
-    if (!logColumnNames.includes('watch_date')) {
-        db.exec(`ALTER TABLE watch_logs ADD COLUMN watch_date TEXT`);
+    if (!logColumnNames.includes('start_date')) db.exec(`ALTER TABLE watch_logs ADD COLUMN start_date TEXT`);
+    if (!logColumnNames.includes('finish_date')) {
+        db.exec(`ALTER TABLE watch_logs ADD COLUMN finish_date TEXT`);
+        if (logColumnNames.includes('watch_date')) {
+            db.exec(`UPDATE watch_logs SET finish_date = watch_date WHERE finish_date IS NULL`);
+        }
     }
-    if (!logColumnNames.includes('comment')) {
-        db.exec(`ALTER TABLE watch_logs ADD COLUMN comment TEXT`);
-    }
 
-    // 4. Тригер оновлення часу
     const createUpdateTrigger = `
         CREATE TRIGGER IF NOT EXISTS update_media_items_time 
-         AFTER UPDATE ON media_items
+          AFTER UPDATE ON media_items
         BEGIN
             UPDATE media_items SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END;
     `;
     db.exec(createUpdateTrigger);
 
-    console.log('База даних ініціалізована успішно.');
+    console.log('База даних ініціалізована.');
 };
 
 initDB();

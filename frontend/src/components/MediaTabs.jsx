@@ -57,7 +57,7 @@ const ScrollableSubTabs = ({ tabs, activeTab, onTabChange, containerStyle = {} }
       }
     };
     checkScroll();
-    setTimeout(checkScroll, 100); // Затримка для рендеру
+    setTimeout(checkScroll, 100);
     window.addEventListener('resize', checkScroll);
     return () => window.removeEventListener('resize', checkScroll);
   }, [tabs]);
@@ -218,7 +218,7 @@ export function TabMain({ media, tmdbData }) {
               <div 
                 key={season.season_number} 
                 style={{...styles.personCard, cursor: 'pointer'}}
-                onClick={() => navigate(`/media/${media.media_type}/${media.id}/season/${season.season_number}`)}
+                onClick={() => navigate(`/media/${media.media_type}/${tmdbData.tmdb_id}/season/${season.season_number}`)}
               >
                 <img src={season.poster_path || 'https://via.placeholder.com/105x155?text=No+Poster'} alt={season.name} style={styles.personPhoto} />
                 <div style={styles.personName}>{season.name}</div>
@@ -273,7 +273,7 @@ export function TabMain({ media, tmdbData }) {
   );
 }
 
-// --- 2. ВКЛАДКА АКТОРІВ (УДОСКОНАЛЕНА З РУХОМ І АНІМАЦІЄЮ) ---
+// --- 2. ВКЛАДКА АКТОРІВ ---
 export function TabActors({ tmdbData }) {
   const navigate = useNavigate();
   const [activeCrewTab, setActiveCrewTab] = useState('cast');
@@ -382,7 +382,7 @@ export function TabActors({ tmdbData }) {
   );
 }
 
-// --- 3. ВКЛАДКА КАДРІВ (ОНОВЛЕНО З РУХОМ) ---
+// --- 3. ВКЛАДКА КАДРІВ ---
 export function TabShots({ tmdbData }) {
   const [activeShotsTab, setActiveShotsTab] = useState('backdrops');
   const [visibleImageCount, setVisibleImageCount] = useState(12);
@@ -689,43 +689,25 @@ export function TabSources({ tmdbData }) {
 }
 
 // --- 6. ВКЛАДКА ІСТОРІЇ ---
-export function TabHistory({ logs, onDelete, onCreate, onUpdate }) {
+export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLogId, setEditingLogId] = useState(null);
-  const [formData, setFormData] = useState({ watch_date: '', rating: '' });
+  const [formData, setFormData] = useState({ start_date: '', finish_date: '', rating: '' });
 
   const formatDateStr = (dateString) => {
-    if (!dateString) return 'Невідомо';
-    return new Date(dateString).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
-  };
-
-  const openAddModal = () => {
-    setEditingLogId(null);
-    setFormData({ watch_date: getLocalDateString(), rating: '' });
-    setIsModalOpen(true);
-  };
-
-  const openEditModal = (log) => {
-    setEditingLogId(log.id);
-    setFormData({ 
-      watch_date: log.watch_date || '', 
-      rating: log.rating !== null && log.rating !== undefined ? log.rating : '' 
-    });
-    setIsModalOpen(true);
+    if (!dateString) return null;
+    return new Date(dateString).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const payload = { 
-      watch_date: formData.watch_date || getLocalDateString(), 
+      start_date: formData.start_date || null, 
+      finish_date: formData.finish_date || null, 
       rating: formData.rating === '' ? null : parseFloat(formData.rating) 
     };
-    
-    if (editingLogId) {
-      onUpdate(editingLogId, payload);
-    } else {
-      onCreate(payload);
-    }
+    if (editingLogId) onUpdate(editingLogId, payload);
+    else onCreate(payload);
     setIsModalOpen(false);
   };
 
@@ -733,41 +715,72 @@ export function TabHistory({ logs, onDelete, onCreate, onUpdate }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={styles.sectionTitle} className="mb-0">Історія переглядів</h3>
-        <button onClick={openAddModal} style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid #38bdf8', color: '#38bdf8', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 'bold' }}>
-          <Plus size={16} /> Додати
+        <button onClick={() => {
+            setEditingLogId(null); setFormData({ start_date: getLocalDateString(), finish_date: getLocalDateString(), rating: '' }); setIsModalOpen(true);
+        }} style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid #38bdf8', color: '#38bdf8', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 'bold' }}>
+          <Plus size={16} /> Записати
         </button>
       </div>
 
       {(!logs || logs.length === 0) ? (
-        <p style={styles.emptyText}>Ще немає записів про перегляд.</p>
+        <p style={styles.emptyText}>Ви ще не записували перегляди.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
-          {logs.map((log, index) => (
-            <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a1a1a', padding: '16px 20px', borderRadius: '12px', border: index === 0 ? '1px solid var(--dominant-color-strong, #38bdf8)' : '1px solid #333' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <div style={{ backgroundColor: '#2a2a2a', padding: '10px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Calendar size={20} color="#a3a3a3" />
-                </div>
-                <div>
-                  <div style={{ color: '#fff', fontSize: '15px', fontWeight: 'bold' }}>
-                    {formatDateStr(log.watch_date)}
-                    {index === 0 && <span style={{ marginLeft: '10px', fontSize: '11px', color: '#38bdf8', border: '1px solid #38bdf8', padding: '2px 6px', borderRadius: '4px' }}>Останній</span>}
+          {logs.map((log, index) => {
+            const start = formatDateStr(log.start_date);
+            const finish = formatDateStr(log.finish_date);
+            
+            // Спеціальний вивід для сезону на сторінці епізоду
+            if (viewType === 'episode' && log.media_type === 'season') {
+                if (start && finish && start !== finish) {
+                    return (
+                        <div key={log.id} style={{ padding: '12px', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderLeft: '3px solid #38bdf8', borderRadius: '4px', fontSize: '14px', color: '#94a3b8' }}>
+                            <Star size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'text-top' }} color="#38bdf8" />
+                            Серію переглянуто протягом сезону: <span style={{ color: '#fff', fontWeight: 'bold' }}>{start} - {finish}</span>
+                        </div>
+                    );
+                }
+                return null;
+            }
+
+            let dateText = 'Без дати';
+            if (start && finish) dateText = start === finish ? `Переглянуто: ${start}` : `Протягом: ${start} - ${finish}`;
+            else if (start) dateText = `Почато: ${start}`;
+            else if (finish) dateText = `Завершено: ${finish}`;
+
+            // Візуалізація для дочірніх логів на сторінках сезону/серіалу
+            const isChildLog = (viewType === 'series' && log.media_type !== 'series') || (viewType === 'season' && log.media_type === 'episode');
+
+            return (
+              <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a1a1a', padding: '16px 20px', borderRadius: '12px', border: index === 0 && !isChildLog ? '1px solid var(--dominant-color-strong, #38bdf8)' : '1px solid #333' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                  <div style={{ backgroundColor: '#2a2a2a', padding: '10px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Calendar size={20} color={isChildLog ? "#64748b" : "#a3a3a3"} />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
-                    <Star size={14} color={log.rating !== null && log.rating !== undefined ? "#facc15" : "#555"} fill={log.rating !== null && log.rating !== undefined ? "#facc15" : "none"} />
-                    <span style={{ color: log.rating !== null && log.rating !== undefined ? '#facc15' : '#555', fontSize: '14px', fontWeight: '500' }}>
-                      {log.rating !== null && log.rating !== undefined ? `${log.rating} / 5` : 'Без оцінки'}
-                    </span>
+                  <div>
+                    {isChildLog && <div style={{ fontSize: '11px', color: '#38bdf8', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '4px' }}>{log.media_title}</div>}
+                    <div style={{ color: '#fff', fontSize: '15px', fontWeight: 'bold' }}>
+                      {dateText}
+                      {index === 0 && !isChildLog && <span style={{ marginLeft: '10px', fontSize: '11px', color: '#38bdf8', border: '1px solid #38bdf8', padding: '2px 6px', borderRadius: '4px' }}>Останній</span>}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                      <Star size={14} color={log.rating !== null && log.rating !== undefined ? "#facc15" : "#555"} fill={log.rating !== null && log.rating !== undefined ? "#facc15" : "none"} />
+                      <span style={{ color: log.rating !== null && log.rating !== undefined ? '#facc15' : '#555', fontSize: '14px', fontWeight: '500' }}>
+                        {log.rating !== null && log.rating !== undefined ? `${log.rating} / 5` : 'Без оцінки'}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                
+                {!isChildLog && (
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button onClick={() => { setEditingLogId(log.id); setFormData({ start_date: log.start_date || '', finish_date: log.finish_date || '', rating: log.rating !== null ? log.rating : '' }); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#a3a3a3' }}><Pen size={18} /></button>
+                      <button onClick={() => onDelete(log.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#ef4444' }}><Trash2 size={18} /></button>
+                    </div>
+                )}
               </div>
-              
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={() => openEditModal(log)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#a3a3a3' }}><Pen size={18} /></button>
-                <button onClick={() => onDelete(log.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#ef4444' }}><Trash2 size={18} /></button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -777,12 +790,16 @@ export function TabHistory({ logs, onDelete, onCreate, onUpdate }) {
             <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '20px' }}>{editingLogId ? 'Редагувати запис' : 'Новий запис'}</h3>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Дата перегляду</label>
-                <input type="date" value={formData.watch_date} onChange={e => setFormData({...formData, watch_date: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Дата початку</label>
+                <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Оцінка (0 - 5, не обов'язково)</label>
-                <input type="number" step="0.5" min="0" max="5" placeholder="Наприклад: 4.5" value={formData.rating} onChange={e => setFormData({...formData, rating: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Дата завершення</label>
+                <input type="date" value={formData.finish_date} onChange={e => setFormData({...formData, finish_date: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Оцінка (0 - 5)</label>
+                <input type="number" step="0.5" min="0" max="5" value={formData.rating} onChange={e => setFormData({...formData, rating: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} style={{ background: 'transparent', border: '1px solid #444', color: '#ccc', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>Скасувати</button>
