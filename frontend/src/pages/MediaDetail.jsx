@@ -4,6 +4,7 @@ import { ArrowLeft, X, CalendarCheck } from 'lucide-react';
 import { MediaGlobalStyles, styles } from '../styles/mediaDetailStyles';
 import { TabMain, TabActors, TabShots, TabPremiere, TabSources, TabHistory } from '../components/MediaTabs';
 import ActionButtons from '../components/ActionButtons';
+import { getAverageColor } from '../utils'; // Імпорт нашої функції
 
 export default function MediaDetail() {
   const { type, tmdbId } = useParams();
@@ -13,7 +14,7 @@ export default function MediaDetail() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('main');
-
+  const [dominantColor, setDominantColor] = useState('10, 10, 10'); // Стейт для кольору
   const creatingRef = useRef(null);
 
   const reloadLogsAndMedia = async (mediaId) => {
@@ -23,18 +24,16 @@ export default function MediaDetail() {
         fetch(`/api/media/${mediaId}/logs`),
         fetch(`/api/media/${mediaId}`)
       ]);
-
       if (logsRes.ok) {
         const logsJson = await logsRes.json();
         setLogs(logsJson.data || []);
       }
-
       if (mediaRes.ok) {
         const mediaJson = await mediaRes.json();
         if (mediaJson.data) setLocalMedia(mediaJson.data);
       }
     } catch (err) {
-      console.error('Помилка оновлення даних:', err);
+      console.error('Помилка оновлення логів/медіа:', err);
     }
   };
 
@@ -46,18 +45,29 @@ export default function MediaDetail() {
           fetch(`/api/media/tmdb/${tmdbId}`),
           fetch(`/api/external/tmdb/details/${type}/${tmdbId}`)
         ]);
-
+        let localMediaData = null;
         if (localRes.ok) {
           const localJson = await localRes.json();
           if (localJson.data) {
-            setLocalMedia(localJson.data);
-            await reloadLogsAndMedia(localJson.data.id);
+            localMediaData = localJson.data;
+            setLocalMedia(localMediaData);
           }
         }
-
         if (tmdbRes.ok) {
           const tmdbJson = await tmdbRes.json();
-          if (tmdbJson.data) setTmdbData(tmdbJson.data);
+          if (tmdbJson.data) {
+            setTmdbData(tmdbJson.data);
+            
+            // Витягуємо колір із зменшеної версії постера для оптимізації
+            if (tmdbJson.data.poster_path) {
+              const url = `https://image.tmdb.org/t/p/w154${tmdbJson.data.poster_path}`;
+              getAverageColor(url).then(color => setDominantColor(color));
+            }
+          }
+        }
+        
+        if (localMediaData) {
+          await reloadLogsAndMedia(localMediaData.id);
         }
       } catch (err) {
         console.error('Помилка завантаження даних:', err);
@@ -65,17 +75,14 @@ export default function MediaDetail() {
         setLoading(false);
       }
     };
-
     fetchAllData();
   }, [type, tmdbId]);
 
   const ensureLocalMedia = async () => {
     if (localMedia) return localMedia;
-
     if (creatingRef.current) {
       return await creatingRef.current;
     }
-
     creatingRef.current = (async () => {
       try {
         const res = await fetch('/api/media', {
@@ -96,7 +103,6 @@ export default function MediaDetail() {
             imdb_id: tmdbData.imdb_id
           })
         });
-
         if (res.ok) {
           const json = await res.json();
           const createdItem = json.data;
@@ -104,13 +110,12 @@ export default function MediaDetail() {
           return createdItem;
         }
       } catch (err) {
-        console.error('Помилка створення картки у БД:', err);
+        console.error('Помилка створення медіа:', err);
       } finally {
         creatingRef.current = null;
       }
       return null;
     })();
-
     return await creatingRef.current;
   };
 
@@ -125,7 +130,7 @@ export default function MediaDetail() {
         await reloadLogsAndMedia(mediaId);
       }
     } catch (err) {
-      console.error('Помилка оновлення картки:', err);
+      console.error('Помилка оновлення:', err);
     }
   };
 
@@ -160,7 +165,7 @@ export default function MediaDetail() {
   };
 
   const handleLogDelete = async (logId) => {
-    if (!confirm('Видалити цей запис з історії?')) return;
+    if (!confirm('Ви впевнені, що хочете видалити цей запис?')) return;
     try {
       const res = await fetch(`/api/media/logs/${logId}`, { method: 'DELETE' });
       if (res.ok && localMedia) {
@@ -181,7 +186,7 @@ export default function MediaDetail() {
   };
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!tmdbData) return <div style={styles.loadingWrapper}>Не вдалося завантажити TMDB дані</div>;
+  if (!tmdbData) return <div style={styles.loadingWrapper}>Не вдалося знайти дані в TMDB</div>;
 
   const displayMedia = localMedia || {
     id: tmdbData.tmdb_id,
@@ -195,14 +200,14 @@ export default function MediaDetail() {
     runtime: tmdbData.runtime
   };
 
-  const mainTabName = type === 'series' ? 'Серіал' : 'Фільм';
+  const mainTabName = type === 'series' ? 'Про серіал' : 'Про фільм';
 
   const tabs = [
     { id: 'main', label: mainTabName },
     { id: 'actors', label: 'Актори' },
     { id: 'shots', label: 'Кадри' },
     { id: 'premiere', label: "Прем'єри" },
-    { id: 'history', label: 'Історія перегляду' },
+    { id: 'history', label: 'Історія переглядів' },
     { id: 'sources', label: 'Джерела' }
   ];
 
@@ -210,12 +215,16 @@ export default function MediaDetail() {
 
   return (
     <div style={styles.container}>
-      <MediaGlobalStyles />
-
+      <MediaGlobalStyles dominantColor={dominantColor} />
+      
       {tmdbData.backdrop_path && (
         <>
           <div style={{ ...styles.backdropImage, backgroundImage: `url(${tmdbData.backdrop_path})` }} />
-          <div style={styles.backdropGradient} />
+          {/* Використовуємо адаптивний колір для градієнту фону */}
+          <div style={{ 
+            ...styles.backdropGradient, 
+            background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.5) 0%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 100%)` 
+          }} />
         </>
       )}
 
@@ -237,7 +246,6 @@ export default function MediaDetail() {
               style={styles.poster}
             />
           </div>
-
           <ActionButtons
             type={type}
             localMedia={localMedia}
@@ -247,7 +255,6 @@ export default function MediaDetail() {
             handleLogCreate={handleLogCreate}
             handleLogUpdate={handleLogUpdate}
           />
-
           {lastLog && (
             <div style={{
               marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -256,8 +263,8 @@ export default function MediaDetail() {
             }}>
               <CalendarCheck size={16} color="#94a3b8" />
               <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>
-                Останнє переглянуто: <span style={{ color: '#f8fafc' }}>
-                  {lastLog.watch_date ? new Date(lastLog.watch_date).toLocaleDateString('uk-UA') : 'Без дати'}
+                Останній перегляд: <span style={{ color: '#f8fafc' }}>
+                  {lastLog.watch_date ? new Date(lastLog.watch_date).toLocaleDateString('uk-UA') : 'Невідомо'}
                 </span>
               </span>
             </div>

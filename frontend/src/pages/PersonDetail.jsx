@@ -3,9 +3,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, X, ExternalLink, Link as LinkIcon, AtSign, 
-  Globe, Database, Tv, ChevronLeft, ChevronRight, Star, Filter, ChevronDown
+  Globe, Database, Tv, ChevronLeft, ChevronRight, Star, Filter, ChevronDown 
 } from 'lucide-react';
 import { MediaGlobalStyles, styles } from '../styles/mediaDetailStyles';
+import { getJobTranslation, getAverageColor } from '../utils';
 
 const calculateAge = (birthday, deathday) => {
   if (!birthday) return null;
@@ -31,42 +32,13 @@ const getGender = (genderId) => {
 const getKnownForLabel = (genderId) => {
   if (genderId === 1) return 'Відома за';
   if (genderId === 2) return 'Відомий за';
-  return 'Відомий(а) за';
+  return 'Відомі за';
 };
 
 const getAlsoKnownAsLabel = (genderId) => {
   if (genderId === 1) return 'Також відома як';
   if (genderId === 2) return 'Також відомий як';
-  return 'Також відомий(а) як';
-};
-
-const getJobTranslation = (job, gender) => {
-  const isFemale = gender === 1;
-  const translations = {
-      'Director': isFemale ? 'Режисерка' : 'Режисер',
-      'Screenplay': isFemale ? 'Сценаристка' : 'Сценарист',
-      'Writer': isFemale ? 'Сценаристка' : 'Сценарист',
-      'Story': isFemale ? 'Авторка історії' : 'Автор історії',
-      'Director of Photography': isFemale ? 'Операторка' : 'Оператор',
-      'Original Music Composer': isFemale ? 'Композиторка' : 'Композитор',
-      'Music': isFemale ? 'Музика' : 'Музика',
-      'Producer': isFemale ? 'Продюсерка' : 'Продюсер',
-      'Executive Producer': isFemale ? 'Виконавча продюсерка' : 'Виконавчий продюсер',
-      'Co-Producer': isFemale ? 'Співпродюсерка' : 'Співпродюсер',
-      'Editor': isFemale ? 'Монтажерка' : 'Монтажер',
-      'Production Design': 'Художник-постановник',
-      'Art Direction': 'Арт-директор',
-      'Set Decoration': 'Декоратор',
-      'Costume Design': isFemale ? 'Художниця по костюмах' : 'Художник по костюмах',
-      'Makeup Artist': 'Гример',
-      'Hairstylist': 'Стиліст по зачісках',
-      'Casting': 'Кастинг-директор',
-      'Sound Designer': 'Звукорежисер',
-      'Visual Effects Supervisor': 'Супервайзер візуальних ефектів',
-      'Stunt Coordinator': 'Постановник трюків',
-      'Creator': isFemale ? 'Творчиня' : 'Творець'
-  };
-  return translations[job] || job;
+  return 'Також відомі як';
 };
 
 const translateDepartment = (dept, gender) => {
@@ -76,9 +48,9 @@ const translateDepartment = (dept, gender) => {
       'Writing': gender === 1 ? 'Сценаристка' : 'Сценарист',
       'Production': gender === 1 ? 'Продюсерка' : 'Продюсер',
       'Camera': gender === 1 ? 'Операторка' : 'Оператор',
-      'Sound': 'Звукорежисер',
+      'Sound': 'Звук',
       'Editing': gender === 1 ? 'Монтажерка' : 'Монтажер',
-      'Art': 'Художник',
+      'Art': 'Художній відділ',
       'Costume & Make-Up': 'Костюми та грим'
   };
   return depts[dept] || dept;
@@ -88,24 +60,23 @@ const getYear = (dateString) => {
   return dateString ? new Date(dateString).getFullYear() : 'TBA';
 };
 
-const isCyrillic = (text) => /[а-яА-ЯЁёІіЇїЄєҐґ]/.test(text);
-const hasLatin = (text) => /[a-zA-ZÀ-ÖØ-öø-ÿ]/.test(text);
+const isCyrillic = (text) => /[а-яА-ЯёЁіІїЇєЄґҐ]/.test(text);
+const hasLatin = (text) => /[a-zA-Z]/.test(text);
 
 export default function PersonDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [personData, setPersonData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Таби основні
   const [activeTab, setActiveTab] = useState('main');
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [isBioExpanded, setIsBioExpanded] = useState(false);
-
-  // Стан для фільтрів фільмографії
+  
   const [creditFilterRole, setCreditFilterRole] = useState('all');
   const [creditFilterType, setCreditFilterType] = useState('all');
   const [creditSort, setCreditSort] = useState('newest');
+  
+  const [dominantColor, setDominantColor] = useState('10, 10, 10');
 
   useEffect(() => {
     const fetchPersonDetails = async () => {
@@ -113,46 +84,44 @@ export default function PersonDetail() {
       try {
         const response = await fetch(`/api/external/tmdb/person/${id}`);
         const json = await response.json();
-        if (json.data) setPersonData(json.data);
+        if (json.data) {
+          setPersonData(json.data);
+          // Зчитуємо колір із фото профілю
+          if (json.data.profile_path) {
+            const url = `https://image.tmdb.org/t/p/w154${json.data.profile_path}`;
+            getAverageColor(url).then(color => setDominantColor(color));
+          }
+        }
       } catch (err) {
         console.error('Помилка завантаження персони:', err);
       } finally {
         setLoading(false);
       }
     };
-
     fetchPersonDetails();
   }, [id]);
 
-  // Оригінальне ім'я (англійською/французькою тощо)
   const originalName = useMemo(() => {
     if (!personData) return null;
     if (!isCyrillic(personData.name)) return null; 
     return personData.also_known_as?.find(n => hasLatin(n) && !isCyrillic(n)) || null;
   }, [personData]);
 
-  // Інші імена для блоку "Також відомий як"
   const otherNames = useMemo(() => {
     if (!personData?.also_known_as) return [];
     return personData.also_known_as.filter(n => n !== originalName);
   }, [personData, originalName]);
 
-  // Топ проєктів ("Відомий за")
   const topCredits = useMemo(() => {
     if (!personData?.combined_credits) return [];
-    
     const isCast = personData.known_for_department === 'Acting';
     let credits = isCast ? personData.combined_credits.cast : personData.combined_credits.crew;
-    
     if (!credits || credits.length === 0) {
         credits = personData.combined_credits.cast?.length > 0 ? personData.combined_credits.cast : personData.combined_credits.crew;
     }
-
     if (!credits) return [];
-
     const uniqueCredits = [];
     const seen = new Set();
-    
     [...credits]
       .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0))
       .forEach(c => {
@@ -161,45 +130,28 @@ export default function PersonDetail() {
               uniqueCredits.push(c);
           }
       });
-
     return uniqueCredits.slice(0, 15);
   }, [personData]);
 
-  // Базова об'єднана фільмографія
   const unifiedCredits = useMemo(() => {
     if (!personData?.combined_credits) return [];
-    
     const projectMap = new Map();
-
     (personData.combined_credits.cast || []).forEach(item => {
       if (!projectMap.has(item.id)) {
         projectMap.set(item.id, { 
-          id: item.id,
-          title: item.title || item.name,
-          original_title: item.original_title || item.original_name,
-          media_type: item.media_type,
-          release_date: item.release_date || item.first_air_date,
-          poster_path: item.poster_path,
-          vote_average: item.vote_average,
-          castRoles: [], 
-          crewJobs: [] 
+          id: item.id, title: item.title || item.name, original_title: item.original_title || item.original_name,
+          media_type: item.media_type, release_date: item.release_date || item.first_air_date,
+          poster_path: item.poster_path, vote_average: item.vote_average, castRoles: [], crewJobs: [] 
         });
       }
-      projectMap.get(item.id).castRoles.push(item.character || 'Роль не вказана');
+      projectMap.get(item.id).castRoles.push(item.character || 'У ролі себе');
     });
-
     (personData.combined_credits.crew || []).forEach(item => {
       if (!projectMap.has(item.id)) {
         projectMap.set(item.id, { 
-          id: item.id,
-          title: item.title || item.name,
-          original_title: item.original_title || item.original_name,
-          media_type: item.media_type,
-          release_date: item.release_date || item.first_air_date,
-          poster_path: item.poster_path,
-          vote_average: item.vote_average,
-          castRoles: [], 
-          crewJobs: [] 
+          id: item.id, title: item.title || item.name, original_title: item.original_title || item.original_name,
+          media_type: item.media_type, release_date: item.release_date || item.first_air_date,
+          poster_path: item.poster_path, vote_average: item.vote_average, castRoles: [], crewJobs: [] 
         });
       }
       const translatedJob = getJobTranslation(item.job, personData.gender);
@@ -208,17 +160,13 @@ export default function PersonDetail() {
           proj.crewJobs.push(translatedJob);
       }
     });
-
     return Array.from(projectMap.values());
   }, [personData]);
 
-  // Динамічний список усіх доступних ролей для фільтрації
   const availableRoles = useMemo(() => {
     if (!unifiedCredits || unifiedCredits.length === 0) return [];
-    
     const roleCounts = {};
     const actingRoleName = translateDepartment('Acting', personData?.gender);
-
     unifiedCredits.forEach(c => {
       if (c.castRoles.length > 0) {
         roleCounts[actingRoleName] = (roleCounts[actingRoleName] || 0) + 1;
@@ -227,17 +175,13 @@ export default function PersonDetail() {
         roleCounts[job] = (roleCounts[job] || 0) + 1;
       });
     });
-
     return Object.entries(roleCounts)
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-      
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));      
   }, [unifiedCredits, personData]);
 
-  // Відфільтрована та відсортована фільмографія
   const processedCredits = useMemo(() => {
     let result = [...unifiedCredits];
-
     if (creditFilterRole !== 'all') {
       const actingRoleName = translateDepartment('Acting', personData?.gender);
       if (creditFilterRole === actingRoleName) {
@@ -246,36 +190,28 @@ export default function PersonDetail() {
         result = result.filter(c => c.crewJobs.includes(creditFilterRole));
       }
     }
-
     if (creditFilterType !== 'all') {
       result = result.filter(c => c.media_type === creditFilterType);
     }
-
     result.sort((a, b) => {
-      if (creditSort === 'rating') {
-        return (b.vote_average || 0) - (a.vote_average || 0);
-      }
-      
+      if (creditSort === 'rating') return (b.vote_average || 0) - (a.vote_average || 0);
       const dateA = new Date(a.release_date || (creditSort === 'newest' ? '1900-01-01' : '2099-01-01')).getTime();
       const dateB = new Date(b.release_date || (creditSort === 'newest' ? '1900-01-01' : '2099-01-01')).getTime();
-      
       return creditSort === 'newest' ? dateB - dateA : dateA - dateB;
     });
-
     return result;
   }, [unifiedCredits, creditFilterRole, creditFilterType, creditSort, personData]);
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!personData) return <div style={styles.loadingWrapper}>Персону не знайдено.</div>;
+  if (!personData) return <div style={styles.loadingWrapper}>Помилка завантаження.</div>;
 
   const age = calculateAge(personData.birthday, personData.deathday);
   const formatBirthday = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('uk-UA') : '-';
-
   const profiles = personData.images?.profiles || [];
   const links = personData.external_ids || {};
-  
+
   const sourceGroups = [
-    { title: 'Офіційні', icon: <Globe size={20} color="#38bdf8" />, items: [{ label: 'Офіційний сайт', url: personData.homepage, icon: <LinkIcon size={18} /> }] },
+    { title: 'Офіційні сайти', icon: <Globe size={20} color="#38bdf8" />, items: [{ label: 'Офіційний сайт', url: personData.homepage, icon: <LinkIcon size={18} /> }] },
     { title: 'Бази даних', icon: <Database size={20} color="#facc15" />, items: [{ label: 'TMDB', url: `https://www.themoviedb.org/person/${personData.id}`, icon: <Tv size={18} /> }, { label: 'IMDb', url: links.imdb_id ? `https://www.imdb.com/name/${links.imdb_id}` : null, icon: <ExternalLink size={18} /> }, { label: 'Wikidata', url: links.wikidata_id ? `https://www.wikidata.org/wiki/${links.wikidata_id}` : null, icon: <ExternalLink size={18} /> }] },
     { title: 'Соціальні мережі', icon: <ExternalLink size={20} color="#2ecc71" />, items: [{ label: 'Instagram', url: links.instagram_id ? `https://www.instagram.com/${links.instagram_id}` : null, icon: <ExternalLink size={18} /> }, { label: 'Twitter (X)', url: links.twitter_id ? `https://twitter.com/${links.twitter_id}` : null, icon: <ExternalLink size={18} /> }, { label: 'Facebook', url: links.facebook_id ? `https://www.facebook.com/${links.facebook_id}` : null, icon: <ExternalLink size={18} /> }, { label: 'TikTok', url: links.tiktok_id ? `https://www.tiktok.com/@${links.tiktok_id}` : null, icon: <ExternalLink size={18} /> }] }
   ];
@@ -289,7 +225,13 @@ export default function PersonDetail() {
 
   return (
     <div style={styles.container}>
-      <MediaGlobalStyles />
+      <MediaGlobalStyles dominantColor={dominantColor} />
+      
+      {/* Ефект світіння зверху */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: '400px', pointerEvents: 'none',
+        background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.2) 0%, rgba(10,10,10,0) 100%)`, zIndex: 0
+      }} />
       
       <div style={styles.topNav}>
         <button onClick={() => navigate(-1)} style={styles.navButton}>
@@ -301,7 +243,6 @@ export default function PersonDetail() {
       </div>
 
       <div style={styles.mainContent}>
-        
         {/* ЛІВА КОЛОНКА */}
         <div style={styles.leftColumn}>
           <div style={styles.posterWrapper}>
@@ -313,7 +254,7 @@ export default function PersonDetail() {
           </div>
 
           <div style={{ ...styles.detailsBox, padding: '15px' }}>
-            <h3 style={{ ...styles.sectionTitle, fontSize: '16px', marginBottom: '10px' }}>У мережі</h3>
+            <h3 style={{ ...styles.sectionTitle, fontSize: '16px', marginBottom: '10px' }}>Посилання</h3>
             <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
               {personData.homepage && (
                 <a href={personData.homepage} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8' }} title="Офіційний сайт">
@@ -365,10 +306,10 @@ export default function PersonDetail() {
             </div>
           </div>
 
-          {/* Вкладка ГОЛОВНА */}
+          {/* ВКЛАДКА: ПРО ЛЮДИНУ */}
           {activeTab === 'main' && (
             <>
-              {/* Заголовок */}
+              {/* ЗАГОЛОВОК */}
               <div style={styles.headerBlock}>
                 <h1 style={styles.mainTitle}>{personData.name}</h1>
                 {originalName && (
@@ -378,14 +319,14 @@ export default function PersonDetail() {
                 )}
               </div>
 
-              {/* Блок Інфо */}
+              {/* ДЕТАЛІ */}
               <div style={styles.detailsBox}>
                 <div style={styles.detailRow}>
                   <span style={styles.detailLabel}>Стать:</span>
                   <span style={styles.detailValue}>{getGender(personData.gender)}</span>
                 </div>
                 <div style={styles.detailRow}>
-                  <span style={styles.detailLabel}>День народження:</span>
+                  <span style={styles.detailLabel}>Дата народження:</span>
                   <span style={styles.detailValue}>
                     {formatBirthday(personData.birthday)} {age !== null && !personData.deathday ? `(${age} років)` : ''}
                   </span>
@@ -394,7 +335,7 @@ export default function PersonDetail() {
                   <div style={styles.detailRow}>
                     <span style={styles.detailLabel}>Дата смерті:</span>
                     <span style={styles.detailValue}>
-                      {formatBirthday(personData.deathday)} {age !== null ? `(у віці ${age} років)` : ''}
+                      {formatBirthday(personData.deathday)} {age !== null ? `(У віці ${age} років)` : ''}
                     </span>
                   </div>
                 )}
@@ -415,7 +356,7 @@ export default function PersonDetail() {
                 )}
               </div>
 
-              {/* Біографія з кнопкою "Читати далі" */}
+              {/* БІОГРАФІЯ */}
               {personData.biography && (
                 <div style={styles.sectionBlock}>
                   <h3 style={styles.sectionTitle}>Біографія</h3>
@@ -451,7 +392,7 @@ export default function PersonDetail() {
                 </div>
               )}
 
-              {/* Відомий/ма за (Топ проєктів) */}
+              {/* ВІДОМІ РОБОТИ (ГОР. СКРОЛ) */}
               {topCredits.length > 0 && (
                 <div style={styles.sectionBlock}>
                   <h3 style={styles.sectionTitle}>{getKnownForLabel(personData.gender)}</h3>
@@ -484,12 +425,12 @@ export default function PersonDetail() {
                 </div>
               )}
 
-              {/* Повна Фільмографія з фільтрами */}
+              {/* УСЯ ФІЛЬМОГРАФІЯ */}
               <div style={{...styles.sectionBlock, marginTop: '40px'}}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '20px' }}>
                   <h3 style={{...styles.sectionTitle, marginBottom: 0}}>Фільмографія</h3>
                   
-                  {/* Панель фільтрів */}
+                  {/* ФІЛЬТРИ */}
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', backgroundColor: '#1a1a1a', padding: '10px', borderRadius: '8px', border: '1px solid #2a2a2a' }}>
                     
                     <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
@@ -506,9 +447,9 @@ export default function PersonDetail() {
 
                     <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
                       <select value={creditFilterType} onChange={(e) => setCreditFilterType(e.target.value)} style={selectStyle}>
-                        <option value="all" style={{ background: '#1e293b', color: '#f8fafc' }}>Усі формати</option>
-                        <option value="movie" style={{ background: '#1e293b', color: '#f8fafc' }}>Тільки фільми</option>
-                        <option value="tv" style={{ background: '#1e293b', color: '#f8fafc' }}>Тільки серіали</option>
+                        <option value="all" style={{ background: '#1e293b', color: '#f8fafc' }}>Всі формати</option>
+                        <option value="movie" style={{ background: '#1e293b', color: '#f8fafc' }}>Фільми</option>
+                        <option value="tv" style={{ background: '#1e293b', color: '#f8fafc' }}>Серіали</option>
                       </select>
                       <ChevronDown size={14} style={{ position: 'absolute', right: '10px', pointerEvents: 'none', color: '#38bdf8' }} />
                     </div>
@@ -521,14 +462,13 @@ export default function PersonDetail() {
                       </select>
                       <ChevronDown size={14} style={{ position: 'absolute', right: '10px', pointerEvents: 'none', color: '#facc15' }} />
                     </div>
-
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {processedCredits.map((credit, idx) => (
                     <div 
-                      key={`${credit.id}-${idx}`}
+                      key={`${credit.id}-${idx}`} 
                       style={{
                         display: 'flex', alignItems: 'center', gap: '15px', 
                         backgroundColor: '#1a1a1a', padding: '10px', 
@@ -539,12 +479,12 @@ export default function PersonDetail() {
                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2a2a2a'}
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1a1a1a'}
                     >
-                      {/* Рік */}
+                      {/* РІК */}
                       <div style={{ width: '45px', textAlign: 'center', color: '#94a3b8', fontSize: '15px', fontWeight: 'bold' }}>
                         {getYear(credit.release_date)}
                       </div>
                       
-                      {/* Постер */}
+                      {/* МІНІ-ПОСТЕР */}
                       <img 
                         src={credit.poster_path ? `https://image.tmdb.org/t/p/w92${credit.poster_path}` : 'https://via.placeholder.com/60x90?text=No+Img'} 
                         alt={credit.title}
@@ -552,7 +492,7 @@ export default function PersonDetail() {
                         style={{ width: '60px', height: '90px', borderRadius: '4px', backgroundColor: '#333' }}
                       />
                       
-                      {/* Інфо */}
+                      {/* ІНФО */}
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
@@ -575,9 +515,9 @@ export default function PersonDetail() {
                           {credit.castRoles.length > 0 && (
                              <div style={{ fontSize: '13px', color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                <span style={{ color: '#facc15', fontWeight: '600', marginRight: '6px' }}>
-                                 {personData.gender === 1 ? 'Акторка:' : 'Актор:'}
-                               </span> 
-                               {credit.castRoles.join(', ')}
+                                 {personData.gender === 1 ? 'Роль:' : 'Роль:'}
+                               </span>
+                                {credit.castRoles.join(', ')}
                              </div>
                           )}
                           
@@ -589,7 +529,7 @@ export default function PersonDetail() {
                         </div>
                       </div>
                       
-                      {/* Тип */}
+                      {/* ТИП */}
                       <div style={{ padding: '4px 8px', borderRadius: '4px', backgroundColor: credit.media_type === 'movie' ? 'rgba(56, 189, 248, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: credit.media_type === 'movie' ? '#38bdf8' : '#10b981', fontSize: '12px', textTransform: 'uppercase', fontWeight: 'bold', flexShrink: 0 }}>
                         {credit.media_type === 'movie' ? 'Фільм' : 'Серіал'}
                       </div>
@@ -597,14 +537,14 @@ export default function PersonDetail() {
                   ))}
                   
                   {processedCredits.length === 0 && (
-                    <p style={styles.emptyText}>За вибраними фільтрами проєктів не знайдено.</p>
+                    <p style={styles.emptyText}>Нічого не знайдено.</p>
                   )}
                 </div>
               </div>
             </>
           )}
 
-          {/* Вкладка ДЖЕРЕЛА */}
+          {/* ВКЛАДКА: ДЖЕРЕЛА */}
           {activeTab === 'sources' && (
             <div style={{ marginTop: '10px' }}>
               <div style={styles.sourcesContainer}>
@@ -633,7 +573,7 @@ export default function PersonDetail() {
             </div>
           )}
 
-          {/* Вкладка ФОТОГРАФІЇ */}
+          {/* ВКЛАДКА: ФОТО */}
           {activeTab === 'photos' && profiles.length > 0 && (
             <>
               <div style={{ ...styles.imagesGrid, gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
@@ -649,7 +589,7 @@ export default function PersonDetail() {
                 ))}
               </div>
 
-              {/* Модальне вікно для фотографій */}
+              {/* Лайтбокс */}
               {lightboxIndex !== null && (
                 <div style={{
                   position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
@@ -668,7 +608,7 @@ export default function PersonDetail() {
                   
                   <img 
                     src={`https://image.tmdb.org/t/p/original${profiles[lightboxIndex].file_path}`} 
-                    alt="Повне фото"
+                    alt="На повний екран"
                     style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px' }}
                   />
 
@@ -681,7 +621,6 @@ export default function PersonDetail() {
               )}
             </>
           )}
-
         </div>
       </div>
     </div>
