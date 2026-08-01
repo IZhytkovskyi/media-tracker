@@ -1,24 +1,19 @@
 import { 
-    getAllMedia, 
-    getMediaById, 
-    getMediaByTmdbId,
-    createMedia, 
-    updateMedia, 
-    deleteMedia,
-    getMediaLogs,
-    createMediaLog,
-    updateMediaLog,
-    deleteMediaLog
+    getAllMedia, getMediaById, getMediaByExternalId, getMediaChildren,
+    createMedia, updateMedia, deleteMedia,
+    getMediaLogs, createMediaLog, updateMediaLog, deleteMediaLog
 } from '../controllers/movies.js';
 
 const createMediaSchema = {
     body: {
         type: 'object',
-        required: ['title', 'media_type'],
+        required: ['title', 'media_type', 'external_id'],
         properties: {
             title: { type: 'string', minLength: 1 },
             original_title: { type: ['string', 'null'] },
-            media_type: { type: 'string', enum: ['movie', 'series', 'book', 'game', 'comic', 'manga'] },
+            media_type: { type: 'string' },
+            external_id: { type: 'string' },
+            parent_id: { type: ['integer', 'null'] },
             status: { type: ['string', 'null'], enum: ['planned', 'watching', 'completed', 'dropped', 'on_hold', null], default: null },
             rating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
             review: { type: ['string', 'null'] },
@@ -42,7 +37,7 @@ const updateMediaSchema = {
         properties: {
             title: { type: 'string', minLength: 1 },
             original_title: { type: ['string', 'null'] },
-            media_type: { type: 'string', enum: ['movie', 'series', 'book', 'game', 'comic', 'manga'] },
+            media_type: { type: 'string' },
             status: { type: ['string', 'null'], enum: ['planned', 'watching', 'completed', 'dropped', 'on_hold', null] },
             rating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
             review: { type: ['string', 'null'] },
@@ -65,7 +60,8 @@ const logSchema = {
     body: {
         type: 'object',
         properties: {
-            watch_date: { type: ['string', 'null'] },
+            start_date: { type: ['string', 'null'] },
+            finish_date: { type: ['string', 'null'] },
             rating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
             comment: { type: ['string', 'null'] }
         },
@@ -76,13 +72,13 @@ const logSchema = {
 export default async function mediaRoutes(fastify, options) {
     fastify.get('/media', getAllMedia);
     fastify.get('/media/:id', getMediaById);
-    fastify.get('/media/tmdb/:tmdbId', getMediaByTmdbId);
-
+    fastify.get('/media/external/:externalId', getMediaByExternalId);
+    fastify.get('/media/:id/children', getMediaChildren);
+    
     fastify.post('/media', { schema: createMediaSchema }, createMedia);
     fastify.patch('/media/:id', { schema: updateMediaSchema }, updateMedia);
     fastify.delete('/media/:id', deleteMedia);
 
-    // Маршрути Журналу
     fastify.get('/media/:id/logs', getMediaLogs);
     fastify.post('/media/:id/logs', { schema: logSchema }, createMediaLog);
     fastify.patch('/media/logs/:log_id', { schema: logSchema }, updateMediaLog);
