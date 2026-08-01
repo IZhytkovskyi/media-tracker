@@ -1,5 +1,7 @@
+// src/db/database.js
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
+
 dotenv.config();
 
 const db = new Database(process.env.DB_FILE || './src/db/tracker.db', {
@@ -55,7 +57,6 @@ const initDB = () => {
     `;
     db.exec(createLogsTable);
 
-    // НОВІ ТАБЛИЦІ ДЛЯ СПИСКІВ
     const createCustomListsTable = `
         CREATE TABLE IF NOT EXISTS custom_lists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,10 +92,14 @@ const initDB = () => {
             db.exec(`UPDATE watch_logs SET finish_date = watch_date WHERE finish_date IS NULL`);
         }
     }
+    // Нова колонка для зв'язку логів між собою
+    if (!logColumnNames.includes('parent_log_id')) {
+        db.exec(`ALTER TABLE watch_logs ADD COLUMN parent_log_id INTEGER REFERENCES watch_logs(id) ON DELETE CASCADE`);
+    }
 
     const createUpdateTrigger = `
-        CREATE TRIGGER IF NOT EXISTS update_media_items_time
-           AFTER UPDATE ON media_items
+        CREATE TRIGGER IF NOT EXISTS update_media_items_time 
+          AFTER UPDATE ON media_items
         BEGIN
             UPDATE media_items SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END;
@@ -102,16 +107,17 @@ const initDB = () => {
     db.exec(createUpdateTrigger);
 
     const createListUpdateTrigger = `
-        CREATE TRIGGER IF NOT EXISTS update_custom_lists_time
-           AFTER UPDATE ON custom_lists
+        CREATE TRIGGER IF NOT EXISTS update_custom_lists_time 
+          AFTER UPDATE ON custom_lists
         BEGIN
             UPDATE custom_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END;
     `;
     db.exec(createListUpdateTrigger);
 
-    console.log('База даних ініціалізована.');
+    console.log('База даних ініціалізована успішно.');
 };
 
 initDB();
+
 export default db;
