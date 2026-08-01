@@ -106,15 +106,25 @@ export default function SeasonDetail() {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     title: seriesData.title, original_title: seriesData.original_title,
-                    media_type: 'series', external_id: `tv_${tmdbId}`, tmdb_id: seriesData.id,
+                    media_type: 'series', external_id: `tv_${tmdbId}`, tmdb_id: seriesData.tmdb_id,
                     total_seasons: seriesData.total_seasons || seriesData.number_of_seasons || 1
                 })
             });
             const j = await res.json();
-            seriesMediaId = j.data.id;
+            if (res.ok && j.data?.id) {
+                seriesMediaId = j.data.id;
+            } else {
+                // Найімовірніше конфлікт (запис вже створений паралельним запитом) —
+                // перепитуємо, замість того щоб продовжити з порожнім seriesMediaId
+                // і створити сезон-сироту без parent_id.
+                const retryRes = await fetch(`/api/media/external/tv_${tmdbId}`);
+                if (retryRes.ok) seriesMediaId = (await retryRes.json()).data?.id || null;
+            }
         } else {
-            seriesMediaId = (await seriesRes.json()).data.id;
+            seriesMediaId = (await seriesRes.json()).data?.id || null;
         }
+
+        if (!seriesMediaId) return null; // не створюємо сезон без валідного батька
 
         // 2. Створюємо сезон (обов'язково парсимо в число, щоб не ламати БД)
         const res = await fetch('/api/media', {
@@ -135,6 +145,14 @@ export default function SeasonDetail() {
           const json = await res.json();
           setLocalMedia(json.data);
           return json.data;
+        } else {
+            // Конфлікт (external_id вже існує через паралельний запит) — перепитуємо
+            const retrySeason = await fetch(`/api/media/external/${externalId}`);
+            if (retrySeason.ok) {
+                const json = await retrySeason.json();
+                setLocalMedia(json.data);
+                return json.data;
+            }
         }
       } catch (err) {} finally {
         creatingRef.current = null;
@@ -157,22 +175,30 @@ export default function SeasonDetail() {
 
   const handleLogCreate = async (mediaId, logData) => {
     try {
-      await fetch(`/api/media/${mediaId}/logs`, {
+      const res = await fetch(`/api/media/${mediaId}/logs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData)
       });
+      const json = await res.json().catch(() => null);
+      if (json?.warning) {
+        window.alert(`Перегляд збережено, але серії не вдалось позначити автоматично:\n${json.warning}`);
+      }
       await reloadLocalMedia();
     } catch (err) {}
   };
 
   const handleLogUpdate = async (mediaId, logId, logData) => {
     try {
-      await fetch(`/api/media/logs/${logId}`, {
+      const res = await fetch(`/api/media/logs/${logId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData)
       });
+      const json = await res.json().catch(() => null);
+      if (json?.warning) {
+        window.alert(`Перегляд оновлено, але серії не вдалось позначити автоматично:\n${json.warning}`);
+      }
       await reloadLocalMedia();
     } catch (err) {}
   };

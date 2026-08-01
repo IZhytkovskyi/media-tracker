@@ -91,7 +91,7 @@ export default function EpisodeDetail() {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     title: seriesData.title, media_type: 'series', 
-                    external_id: `tv_${tmdbId}`, tmdb_id: seriesData.id,
+                    external_id: `tv_${tmdbId}`, tmdb_id: seriesData.tmdb_id,
                     total_seasons: seriesData.total_seasons || seriesData.number_of_seasons || 1
                 })
             });
@@ -173,22 +173,30 @@ export default function EpisodeDetail() {
 
   const handleLogCreate = async (mediaId, logData) => {
     try {
-      await fetch(`/api/media/${mediaId}/logs`, {
+      const res = await fetch(`/api/media/${mediaId}/logs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData)
       });
+      const json = await res.json().catch(() => null);
+      if (json?.warning) {
+        window.alert(`Перегляд збережено, але не все вдалось позначити автоматично:\n${json.warning}`);
+      }
       await reloadLocalMedia();
     } catch (err) {}
   };
 
   const handleLogUpdate = async (mediaId, logId, logData) => {
     try {
-      await fetch(`/api/media/logs/${logId}`, {
+      const res = await fetch(`/api/media/logs/${logId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData)
       });
+      const json = await res.json().catch(() => null);
+      if (json?.warning) {
+        window.alert(`Перегляд оновлено, але не все вдалось позначити автоматично:\n${json.warning}`);
+      }
       await reloadLocalMedia();
     } catch (err) {}
   };

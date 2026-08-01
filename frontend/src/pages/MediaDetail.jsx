@@ -139,6 +139,10 @@ export default function MediaDetail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData)
       });
+      const json = await res.json().catch(() => null);
+      if (json?.warning) {
+        window.alert(`Перегляд збережено, але серії не вдалось позначити автоматично:\n${json.warning}`);
+      }
       if (res.ok) await reloadLogsAndMedia(mediaId);
     } catch (err) {}
   };
@@ -150,6 +154,10 @@ export default function MediaDetail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData)
       });
+      const json = await res.json().catch(() => null);
+      if (json?.warning) {
+        window.alert(`Перегляд оновлено, але серії не вдалось позначити автоматично:\n${json.warning}`);
+      }
       if (res.ok) await reloadLogsAndMedia(mediaId);
     } catch (err) {}
   };

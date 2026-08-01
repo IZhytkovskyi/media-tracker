@@ -13,13 +13,23 @@ const getSeriesTmdbId = (mediaId) => {
 };
 
 // --- КАСКАДНЕ ОНОВЛЕННЯ ВНИЗ (Сезон -> Серії) ---
+// Повертає { ok: true } при успіху, { ok: false, error: '...' } при провалі,
+// щоб виклик у createMediaLog/updateMediaLog міг повідомити користувача,
+// а не тихо звітувати про "успіх", коли серії насправді не позначились.
 const cascadeDown = async (mediaItem, finishDate) => {
-    if (mediaItem.media_type === 'episode' || mediaItem.media_type === 'movie') return;
+    if (mediaItem.media_type === 'episode' || mediaItem.media_type === 'movie') return { ok: true };
+
+    if (!process.env.TMDB_READ_TOKEN) {
+        const msg = 'cascadeDown: TMDB_READ_TOKEN не заданий у .env — неможливо підтягнути список серій';
+        console.error(msg);
+        return { ok: false, error: msg };
+    }
 
     const seriesTmdbId = getSeriesTmdbId(mediaItem.id);
     if (!seriesTmdbId) {
-        console.error(`cascadeDown: Не знайдено TMDB ID серіалу для media_id ${mediaItem.id}`);
-        return;
+        const msg = `cascadeDown: Не знайдено TMDB ID серіалу для media_id ${mediaItem.id}`;
+        console.error(msg);
+        return { ok: false, error: msg };
     }
 
     if (mediaItem.media_type === 'season') {
@@ -28,12 +38,13 @@ const cascadeDown = async (mediaItem, finishDate) => {
             const res = await fetch(url, { headers: getTmdbHeaders() });
             
             if (!res.ok) {
-                console.error(`cascadeDown TMDB Error: ${res.status} для URL: ${url}`);
-                return;
+                const msg = `cascadeDown TMDB Error: ${res.status} для URL: ${url}`;
+                console.error(msg);
+                return { ok: false, error: msg };
             }
             
             const data = await res.json();
-            if (!data.episodes) return;
+            if (!data.episodes) return { ok: false, error: 'cascadeDown: TMDB не повернув список серій (episodes) для сезону' };
 
             const series = db.prepare('SELECT title FROM media_items WHERE id = ?').get(mediaItem.parent_id);
             const seriesTitle = series ? series.title : '';
@@ -61,15 +72,21 @@ const cascadeDown = async (mediaItem, finishDate) => {
             });
             transaction();
             console.log(`Успішно відмічено ${data.episodes.length} серій для сезону ${mediaItem.season}`);
+            return { ok: true };
         } catch (e) {
             console.error('Помилка при каскадному оновленні серій:', e);
+            return { ok: false, error: e.message };
         }
     } else if (mediaItem.media_type === 'series') {
         try {
             const res = await fetch(`https://api.themoviedb.org/3/tv/${seriesTmdbId}?language=uk-UA`, { headers: getTmdbHeaders() });
-            if (!res.ok) return;
+            if (!res.ok) {
+                const msg = `cascadeDown TMDB Error (series): ${res.status}`;
+                console.error(msg);
+                return { ok: false, error: msg };
+            }
             const data = await res.json();
-            if (!data.seasons) return;
+            if (!data.seasons) return { ok: false, error: 'cascadeDown: TMDB не повернув список сезонів (seasons)' };
 
             for (const s of data.seasons.filter(s => s.season_number > 0)) {
                 const seasonExtId = `season_${s.id}`;
@@ -89,10 +106,16 @@ const cascadeDown = async (mediaItem, finishDate) => {
                     db.prepare(`INSERT INTO watch_logs (media_id, start_date, finish_date, comment) VALUES (?, ?, ?, ?)`).run(seasonMedia.id, finishDate, finishDate, comment);
                 }
 
-                await cascadeDown(seasonMedia, finishDate);
+                const childResult = await cascadeDown(seasonMedia, finishDate);
+                if (childResult && childResult.ok === false) {
+                    // Не зупиняємо цикл по інших сезонах, але фіксуємо, що щось не вдалось
+                    console.error(`cascadeDown: сезон ${s.season_number} не вдалось повністю обробити: ${childResult.error}`);
+                }
             }
+            return { ok: true };
         } catch (e) {
             console.error('Помилка при каскадному оновленні сезонів:', e);
+            return { ok: false, error: e.message };
         }
     }
 };
@@ -182,10 +205,13 @@ const syncMediaStats = async (mediaId) => {
         `).run(mediaId);
     }
 
+    let cascadeResult = { ok: true };
     if (newStatus === 'completed') {
-        await cascadeDown(media, finishDateToCascade);
+        cascadeResult = await cascadeDown(media, finishDateToCascade);
     }
     await cascadeUp(media.parent_id, finishDateToCascade);
+
+    return cascadeResult;
 };
 
 export const getAllMedia = async (request, reply) => {
@@ -271,7 +297,15 @@ export const getMediaByExternalId = async (request, reply) => {
 export const createMedia = async (request, reply) => {
     const data = request.body;
     const genresStr = data.genres ? JSON.stringify(data.genres) : null;
-    
+
+    // Сезон і серія без батьківського запису — це "сирітський" запис:
+    // getSeriesTmdbId ніколи не знайде для нього TMDB ID серіалу, і
+    // cascadeDown/cascadeUp мовчки перестануть працювати для нього.
+    if ((data.media_type === 'season' || data.media_type === 'episode') && !data.parent_id) {
+        reply.code(400);
+        return { error: `Не можна створити запис типу '${data.media_type}' без parent_id (батьківського серіалу/сезону)` };
+    }
+
     try {
         const stmt = db.prepare(`
             INSERT INTO media_items 
@@ -407,9 +441,16 @@ export const createMediaLog = async (request, reply) => {
             VALUES (?, ?, ?, ?, ?)
         `).run(id, start_date || null, finish_date || null, cleanRating, comment || null);
 
-        await syncMediaStats(id);
+        const cascadeResult = await syncMediaStats(id);
         
         reply.code(201);
+        if (cascadeResult && cascadeResult.ok === false) {
+            return {
+                message: 'Лог створено, але не вдалось автоматично позначити серії',
+                id: info.lastInsertRowid,
+                warning: cascadeResult.error
+            };
+        }
         return { message: 'Лог створено', id: info.lastInsertRowid };
     } catch (error) {
         reply.code(400);
@@ -436,8 +477,14 @@ export const updateMediaLog = async (request, reply) => {
             WHERE id = ?
         `).run(newStartDate || null, newFinishDate || null, cleanRating, newComment, log_id);
 
-        await syncMediaStats(existingLog.media_id);
-        
+        const cascadeResult = await syncMediaStats(existingLog.media_id);
+
+        if (cascadeResult && cascadeResult.ok === false) {
+            return {
+                message: 'Лог оновлено, але не вдалось автоматично позначити серії',
+                warning: cascadeResult.error
+            };
+        }
         return { message: 'Лог оновлено' };
     } catch (error) {
         reply.code(400);
