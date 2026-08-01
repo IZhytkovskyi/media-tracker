@@ -5,13 +5,13 @@ export const searchTMDB = async (request, reply) => {
     
     if (!query) {
         reply.code(400);
-        return { error: 'Потрібен параметр пошуку (query)' };
+        return { error: 'Потрібен запит (query)' };
     }
 
     const token = process.env.TMDB_READ_TOKEN;
     if (!token) {
         reply.code(500);
-        return { error: 'Не вказано TMDB_READ_TOKEN в .env' };
+        return { error: 'Не налаштовано TMDB_READ_TOKEN у .env' };
     }
 
     const url = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(query)}&language=uk-UA&page=1`;
@@ -26,7 +26,6 @@ export const searchTMDB = async (request, reply) => {
         });
 
         if (!response.ok) throw new Error(`Помилка TMDB API: ${response.statusText}`);
-
         const data = await response.json();
         
         const results = data.results.map(item => {
@@ -49,7 +48,7 @@ export const searchTMDB = async (request, reply) => {
     } catch (error) {
         request.log.error(error);
         reply.code(500);
-        return { error: 'Не вдалося зв’язатися з TMDB', details: error.message };
+        return { error: 'Помилка пошуку TMDB', details: error.message };
     }
 };
 
@@ -58,7 +57,7 @@ const getJobTranslation = (job, gender) => {
     const translations = {
         'Director': isFemale ? 'Режисерка' : 'Режисер',
         'Screenplay': isFemale ? 'Сценаристка' : 'Сценарист',
-        'Writer': isFemale ? 'Сценаристка' : 'Сценарист',
+        'Writer': isFemale ? 'Письменниця' : 'Письменник',
         'Story': isFemale ? 'Авторка історії' : 'Автор історії',
         'Director of Photography': isFemale ? 'Операторка' : 'Оператор',
         'Original Music Composer': isFemale ? 'Композиторка' : 'Композитор',
@@ -70,16 +69,61 @@ const getJobTranslation = (job, gender) => {
         'Production Design': 'Художник-постановник',
         'Art Direction': 'Артдиректор',
         'Set Decoration': 'Декоратор',
-        'Costume Design': isFemale ? 'Художниця з костюмів' : 'Художник з костюмів',
+        'Costume Design': isFemale ? 'Художниця по костюмах' : 'Художник по костюмах',
         'Makeup Artist': 'Гример',
         'Hairstylist': 'Стиліст зачісок',
         'Casting': 'Кастинг-директор',
         'Sound Designer': 'Звукорежисер',
         'Visual Effects Supervisor': 'Супервайзер візуальних ефектів',
         'Stunt Coordinator': 'Постановник трюків',
+        'Creator': isFemale ? 'Творчиня' : 'Творець'
     };
     return translations[job] || job;
-}; 
+};
+
+// Універсальний парсер титрів з підтримкою кількості епізодів
+const parseCredits = (item, isAggregate = false) => {
+    const creditsToUse = (isAggregate && item.aggregate_credits) ? item.aggregate_credits : item.credits;
+    
+    const cast = creditsToUse?.cast?.map(actor => {
+        let character = actor.character;
+        if (actor.roles && actor.roles.length > 0) {
+            character = actor.roles.map(r => r.character).join(' / ');
+        }
+        return {
+            id: actor.id, name: actor.name, character: character, gender: actor.gender,
+            profile_path: actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : null,
+            episode_count: actor.total_episode_count || null
+        };
+    }) || [];
+
+    const uniqueCrew = [];
+    const seen = new Set();
+    
+    for (const member of (creditsToUse?.crew || [])) {
+        let jobs = [member.job];
+        if (member.jobs && member.jobs.length > 0) {
+            jobs = member.jobs.map(j => j.job);
+        }
+        let epCount = member.total_episode_count || null;
+        
+        jobs.forEach(job => {
+            if (!job) return;
+            const key = `${member.id}-${job}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueCrew.push({
+                    id: member.id, name: member.name, job: getJobTranslation(job, member.gender),
+                    original_job: job, gender: member.gender,
+                    profile_path: member.profile_path ? `https://image.tmdb.org/t/p/w185${member.profile_path}` : null,
+                    episode_count: epCount
+                });
+            }
+        });
+    }
+    
+    return { cast, crew: uniqueCrew, seenCrew: seen };
+};
 
 export const getTMDBDetails = async (request, reply) => {
     const { id, type } = request.params;
@@ -88,10 +132,10 @@ export const getTMDBDetails = async (request, reply) => {
     const token = process.env.TMDB_READ_TOKEN;
     if (!token) {
         reply.code(500);
-        return { error: 'Не вказано TMDB_READ_TOKEN в .env' };
+        return { error: 'Не налаштовано TMDB_READ_TOKEN у .env' };
     }
 
-    const url = `https://api.themoviedb.org/3/${tmdbType}/${id}?language=uk-UA&append_to_response=credits,external_ids,images,release_dates,alternative_titles,content_ratings&include_image_language=uk,en,null`;
+    const url = `https://api.themoviedb.org/3/${tmdbType}/${id}?language=uk-UA&append_to_response=credits,aggregate_credits,external_ids,images,release_dates,alternative_titles,content_ratings&include_image_language=uk,en,null`;
 
     try {
         const response = await fetch(url, {
@@ -104,26 +148,13 @@ export const getTMDBDetails = async (request, reply) => {
         
         const item = await response.json();
         
-        const cast = item.credits?.cast?.map(actor => ({
-            id: actor.id, name: actor.name, character: actor.character, gender: actor.gender,
-            profile_path: actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : null
-        })) || [];
+        // Використовуємо універсальний парсер (з агрегацією для серіалів)
+        const parsed = parseCredits(item, tmdbType === 'tv');
+        const cast = parsed.cast;
+        const uniqueCrew = parsed.crew;
+        const seen = parsed.seenCrew;
 
-        const uniqueCrew = [];
-        const seen = new Set();
-
-        for (const member of (item.credits?.crew || [])) {
-            const key = `${member.id}-${member.job}`; 
-            if (!seen.has(key)) {
-                seen.add(key);
-                uniqueCrew.push({
-                    id: member.id, name: member.name, job: getJobTranslation(member.job, member.gender),
-                    original_job: member.job, gender: member.gender,
-                    profile_path: member.profile_path ? `https://image.tmdb.org/t/p/w185${member.profile_path}` : null
-                });
-            }
-        }
-
+        // Додаємо творців серіалу
         if (tmdbType === 'tv' && item.created_by) {
             for (const creator of item.created_by) {
                 const key = `${creator.id}-Creator`;
@@ -132,7 +163,8 @@ export const getTMDBDetails = async (request, reply) => {
                     uniqueCrew.push({
                         id: creator.id, name: creator.name, job: creator.gender === 1 ? 'Творчиня' : 'Творець',
                         original_job: 'Creator', gender: creator.gender,
-                        profile_path: creator.profile_path ? `https://image.tmdb.org/t/p/w185${creator.profile_path}` : null
+                        profile_path: creator.profile_path ? `https://image.tmdb.org/t/p/w185${creator.profile_path}` : null,
+                        episode_count: item.number_of_episodes || null
                     });
                 }
             }
@@ -176,7 +208,6 @@ export const getTMDBDetails = async (request, reply) => {
 
             const digitalReleases = releases.flatMap(r => r.dates).filter(d => d.type === 4).sort((a, b) => new Date(a.date) - new Date(b.date));
             if (digitalReleases.length > 0) digital_premiere = digitalReleases[0].date;
-
         } else if (tmdbType === 'tv') {
             const usRating = item.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
             age_rating = usRating?.rating || null;
@@ -224,11 +255,15 @@ export const getTMDBDetails = async (request, reply) => {
             cast: cast,
             total_seasons: item.number_of_seasons || 0,
             total_episodes: item.number_of_episodes || 0,
-
+            
             seasons: tmdbType === 'tv' && item.seasons ? item.seasons.map(s => ({
-                season_number: s.season_number, name: s.name, episode_count: s.episode_count,
-                air_date: s.air_date, poster_path: s.poster_path ? `https://image.tmdb.org/t/p/w500${s.poster_path}` : null
-            })).filter(s => s.season_number > 0) : [],
+                season_number: s.season_number, 
+                name: s.name, 
+                episode_count: s.episode_count,
+                air_date: s.air_date, 
+                overview: s.overview,
+                poster_path: s.poster_path ? `https://image.tmdb.org/t/p/w500${s.poster_path}` : null
+            })) : [],
             
             images: {
                 backdrops: item.images?.backdrops || [],
@@ -252,41 +287,35 @@ export const getTMDBDetails = async (request, reply) => {
     } catch (error) {
         request.log.error(error);
         reply.code(500);
-        return { error: 'Не вдалося зв’язатися з TMDB', details: error.message };
+        return { error: 'Помилка отримання деталей TMDB', details: error.message };
     }
 };
 
 export const getTMDBSeasonDetails = async (request, reply) => {
     const { id, season } = request.params;
     const token = process.env.TMDB_READ_TOKEN;
-    if (!token) return { error: 'Не вказано TMDB_READ_TOKEN в .env' };
+    if (!token) return { error: 'Не налаштовано TMDB_READ_TOKEN у .env' };
     
-    // Додано append_to_response для акторів та зображень
-    const url = `https://api.themoviedb.org/3/tv/${id}/season/${season}?language=uk-UA&append_to_response=credits,images&include_image_language=uk,en,null`;
+    // Додаємо aggregate_credits та external_ids
+    const url = `https://api.themoviedb.org/3/tv/${id}/season/${season}?language=uk-UA&append_to_response=credits,aggregate_credits,images,external_ids&include_image_language=uk,en,null`;
+
     try {
         const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         const item = await response.json();
 
-        // Нормалізація для перевикористання у компонентах
-        item.cast = item.credits?.cast?.map(actor => ({
-            id: actor.id, name: actor.name, character: actor.character, gender: actor.gender,
-            profile_path: actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : null
-        })) || [];
-        
-        const uniqueCrew = [];
-        const seen = new Set();
-        for (const member of (item.credits?.crew || [])) {
-            const key = `${member.id}-${member.job}`;
-            if (!seen.has(key)) {
-                seen.add(key);
-                uniqueCrew.push({
-                    id: member.id, name: member.name, job: getJobTranslation(member.job, member.gender),
-                    original_job: member.job, gender: member.gender,
-                    profile_path: member.profile_path ? `https://image.tmdb.org/t/p/w185${member.profile_path}` : null
-                });
-            }
-        }
-        item.crew = uniqueCrew;
+        const parsed = parseCredits(item, true); // Парсимо з агрегацією
+        item.cast = parsed.cast;
+        item.crew = parsed.crew;
+
+        // Генеруємо лінки
+        item.external_links = {
+            tmdb: `https://www.themoviedb.org/tv/${id}/season/${season}`,
+            imdb: item.external_ids?.imdb_id ? `https://www.imdb.com/title/${item.external_ids.imdb_id}` : null,
+            wikidata: item.external_ids?.wikidata_id ? `https://www.wikidata.org/wiki/${item.external_ids.wikidata_id}` : null,
+            facebook: item.external_ids?.facebook_id ? `https://www.facebook.com/${item.external_ids.facebook_id}` : null,
+            instagram: item.external_ids?.instagram_id ? `https://www.instagram.com/${item.external_ids.instagram_id}` : null,
+            twitter: item.external_ids?.twitter_id ? `https://twitter.com/${item.external_ids.twitter_id}` : null,
+        };
 
         return { data: item };
     } catch (error) {
@@ -297,50 +326,47 @@ export const getTMDBSeasonDetails = async (request, reply) => {
 export const getTMDBEpisodeDetails = async (request, reply) => {
     const { id, season, episode } = request.params;
     const token = process.env.TMDB_READ_TOKEN;
-    if (!token) return { error: 'Не вказано TMDB_READ_TOKEN в .env' };
+    if (!token) return { error: 'Не налаштовано TMDB_READ_TOKEN у .env' };
     
-    // Додано append_to_response для акторів та зображень
-    const url = `https://api.themoviedb.org/3/tv/${id}/season/${season}/episode/${episode}?language=uk-UA&append_to_response=credits,images&include_image_language=uk,en,null`;
+    // Епізоди не мають aggregate_credits, але додаємо external_ids
+    const url = `https://api.themoviedb.org/3/tv/${id}/season/${season}/episode/${episode}?language=uk-UA&append_to_response=credits,images,external_ids&include_image_language=uk,en,null`;
+
     try {
         const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         const item = await response.json();
 
-        // Об'єднуємо guest_stars та cast для серії
-        const rawCast = item.credits?.cast || [];
-        const rawGuests = item.guest_stars || [];
+        const parsed = parseCredits(item, false);
         
-        const uniqueCast = [];
-        const seenCast = new Set();
-        [...rawGuests, ...rawCast].forEach(actor => {
+        // Об'єднуємо guest_stars з cast
+        const rawGuests = item.guest_stars || [];
+        const seenCast = new Set(parsed.cast.map(c => c.id));
+        
+        rawGuests.forEach(actor => {
             if (!seenCast.has(actor.id)) {
                 seenCast.add(actor.id);
-                uniqueCast.push({
+                parsed.cast.push({
                     id: actor.id, name: actor.name, character: actor.character, gender: actor.gender,
-                    profile_path: actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : null
+                    profile_path: actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : null,
+                    episode_count: null
                 });
             }
         });
-        item.cast = uniqueCast;
+        
+        item.cast = parsed.cast;
+        item.crew = parsed.crew;
 
-        const uniqueCrew = [];
-        const seenCrew = new Set();
-        for (const member of (item.credits?.crew || [])) {
-            const key = `${member.id}-${member.job}`;
-            if (!seenCrew.has(key)) {
-                seenCrew.add(key);
-                uniqueCrew.push({
-                    id: member.id, name: member.name, job: getJobTranslation(member.job, member.gender),
-                    original_job: member.job, gender: member.gender,
-                    profile_path: member.profile_path ? `https://image.tmdb.org/t/p/w185${member.profile_path}` : null
-                });
-            }
-        }
-        item.crew = uniqueCrew;
-
-        // Перетворюємо stills на backdrops, щоб наша вкладка TabShots змогла їх відрендерити
         if (item.images?.stills) {
             item.images.backdrops = item.images.stills;
         }
+
+        item.external_links = {
+            tmdb: `https://www.themoviedb.org/tv/${id}/season/${season}/episode/${episode}`,
+            imdb: item.external_ids?.imdb_id ? `https://www.imdb.com/title/${item.external_ids.imdb_id}` : null,
+            wikidata: item.external_ids?.wikidata_id ? `https://www.wikidata.org/wiki/${item.external_ids.wikidata_id}` : null,
+            facebook: item.external_ids?.facebook_id ? `https://www.facebook.com/${item.external_ids.facebook_id}` : null,
+            instagram: item.external_ids?.instagram_id ? `https://www.instagram.com/${item.external_ids.instagram_id}` : null,
+            twitter: item.external_ids?.twitter_id ? `https://twitter.com/${item.external_ids.twitter_id}` : null,
+        };
 
         return { data: item };
     } catch (error) {
@@ -354,7 +380,7 @@ export const getTMDBPersonDetails = async (request, reply) => {
     
     if (!token) {
         reply.code(500);
-        return { error: 'Не вказано TMDB_READ_TOKEN в .env' };
+        return { error: 'Не налаштовано TMDB_READ_TOKEN у .env' };
     }
 
     const url = `https://api.themoviedb.org/3/person/${id}?language=uk-UA&append_to_response=combined_credits,images,external_ids`;
@@ -373,6 +399,6 @@ export const getTMDBPersonDetails = async (request, reply) => {
     } catch (error) {
         request.log.error(error);
         reply.code(500);
-        return { error: 'Не вдалося зв’язатися з TMDB', details: error.message };
+        return { error: 'Помилка TMDB', details: error.message };
     }
 };

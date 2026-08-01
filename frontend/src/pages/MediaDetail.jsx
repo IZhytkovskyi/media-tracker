@@ -1,8 +1,9 @@
+// frontend/src/pages/MediaDetail.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, X, CalendarCheck } from 'lucide-react';
 import { MediaGlobalStyles, styles } from '../styles/mediaDetailStyles';
-import { TabMain, TabActors, TabShots, TabPremiere, TabSources, TabHistory } from '../components/MediaTabs';
+import { TabMain, TabActors, TabShots, TabPremiere, TabSources, TabHistory, TabSeasons } from '../components/MediaTabs';
 import ActionButtons from '../components/ActionButtons';
 import { getAverageColor } from '../utils';
 
@@ -16,7 +17,7 @@ export default function MediaDetail() {
   const [activeTab, setActiveTab] = useState('main');
   const [dominantColor, setDominantColor] = useState('10, 10, 10');
   const creatingRef = useRef(null);
-
+  
   const externalId = `${type === 'series' ? 'tv' : 'movie'}_${tmdbId}`;
 
   const reloadLogsAndMedia = async (mediaId) => {
@@ -141,7 +142,7 @@ export default function MediaDetail() {
       });
       const json = await res.json().catch(() => null);
       if (json?.warning) {
-        window.alert(`Перегляд збережено, але серії не вдалось позначити автоматично:\n${json.warning}`);
+        window.alert(`Увага:\n${json.warning}`);
       }
       if (res.ok) await reloadLogsAndMedia(mediaId);
     } catch (err) {}
@@ -156,7 +157,7 @@ export default function MediaDetail() {
       });
       const json = await res.json().catch(() => null);
       if (json?.warning) {
-        window.alert(`Перегляд оновлено, але серії не вдалось позначити автоматично:\n${json.warning}`);
+        window.alert(`Увага:\n${json.warning}`);
       }
       if (res.ok) await reloadLogsAndMedia(mediaId);
     } catch (err) {}
@@ -168,7 +169,7 @@ export default function MediaDetail() {
   };
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!tmdbData) return <div style={styles.loadingWrapper}>Не вдалося знайти дані в TMDB</div>;
+  if (!tmdbData) return <div style={styles.loadingWrapper}>Помилка завантаження з TMDB</div>;
 
   const displayMedia = localMedia || {
     id: tmdbData.tmdb_id,
@@ -182,14 +183,22 @@ export default function MediaDetail() {
     runtime: tmdbData.runtime
   };
 
+  // Динамічне формування вкладок
   const tabs = [
-    { id: 'main', label: type === 'series' ? 'Про серіал' : 'Про фільм' },
+    { id: 'main', label: 'Головна' }
+  ];
+  
+  if (type === 'series') {
+    tabs.push({ id: 'seasons', label: 'Сезони' });
+  }
+  
+  tabs.push(
     { id: 'actors', label: 'Актори' },
     { id: 'shots', label: 'Кадри' },
     { id: 'premiere', label: "Прем'єри" },
     { id: 'history', label: 'Історія переглядів' },
     { id: 'sources', label: 'Джерела' }
-  ];
+  );
 
   return (
     <div style={styles.container}>
@@ -217,15 +226,15 @@ export default function MediaDetail() {
       <div style={styles.mainContent}>
         <div style={styles.leftColumn}>
           <div style={styles.posterWrapper}>
-            <img
-              src={tmdbData.poster_path || 'https://via.placeholder.com/300x450?text=No+Poster'}
-              alt={tmdbData.title}
-              style={styles.poster}
+            <img 
+              src={tmdbData.poster_path || 'https://via.placeholder.com/300x450?text=No+Poster'} 
+              alt={tmdbData.title} 
+              style={styles.poster} 
             />
           </div>
-          <ActionButtons
-            type={type}
-            localMedia={localMedia}
+          <ActionButtons 
+            type={type} 
+            localMedia={localMedia} 
             logs={logs}
             ensureLocalMedia={ensureLocalMedia}
             handleUpdate={handleUpdate}
@@ -238,8 +247,8 @@ export default function MediaDetail() {
           <div className="main-tabs-wrapper">
             <div className="main-tabs-container custom-scroll">
               {tabs.map((tab) => (
-                <button
-                  key={tab.id}
+                <button 
+                  key={tab.id} 
                   className={`main-tab ${activeTab === tab.id ? 'active' : ''}`}
                   onClick={() => setActiveTab(tab.id)}
                 >
@@ -250,21 +259,23 @@ export default function MediaDetail() {
           </div>
 
           {activeTab === 'main' && <TabMain media={displayMedia} tmdbData={tmdbData} />}
+          {activeTab === 'seasons' && <TabSeasons tmdbData={tmdbData} media={displayMedia} />}
           {activeTab === 'actors' && <TabActors tmdbData={tmdbData} />}
           {activeTab === 'shots' && <TabShots tmdbData={tmdbData} />}
           {activeTab === 'premiere' && <TabPremiere tmdbData={tmdbData} media={displayMedia} />}
           {activeTab === 'sources' && <TabSources tmdbData={tmdbData} />}
+          
           {activeTab === 'history' && (
-            <TabHistory
-              logs={logs}
+            <TabHistory 
+              logs={logs} 
               viewType={type}
               onUpdate={async (id, data) => localMedia && handleLogUpdate(localMedia.id, id, data)}
               onCreate={onHistoryCreate}
-              onDelete={async (id) => {
-                 if(window.confirm('Видалити?')) {
-                     await fetch(`/api/media/logs/${id}`, { method: 'DELETE' });
-                     await reloadLogsAndMedia(localMedia.id);
-                 }
+              onDelete={async (id) => { 
+                if(window.confirm('Видалити запис?')) {
+                    await fetch(`/api/media/logs/${id}`, { method: 'DELETE' });
+                    await reloadLogsAndMedia(localMedia.id);
+                }
               }}
               
             />

@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import db from './src/db/database.js';
 import mediaRoutes from './src/routes/movies.js';
 import tmdbRoutes from './src/routes/tmdb.js';
+import listRoutes from './src/routes/lists.js';
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ fastify.get('/api/health', async (request, reply) => {
 
 fastify.register(mediaRoutes, { prefix: '/api' });
 fastify.register(tmdbRoutes, { prefix: '/api/external' });
+fastify.register(listRoutes, { prefix: '/api' });
 
 const start = async () => {
   try {

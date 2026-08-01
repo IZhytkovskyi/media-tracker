@@ -1,6 +1,5 @@
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
-
 dotenv.config();
 
 const db = new Database(process.env.DB_FILE || './src/db/tracker.db', {
@@ -56,6 +55,28 @@ const initDB = () => {
     `;
     db.exec(createLogsTable);
 
+    // НОВІ ТАБЛИЦІ ДЛЯ СПИСКІВ
+    const createCustomListsTable = `
+        CREATE TABLE IF NOT EXISTS custom_lists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    `;
+    db.exec(createCustomListsTable);
+
+    const createListItemsTable = `
+        CREATE TABLE IF NOT EXISTS list_items (
+            list_id INTEGER REFERENCES custom_lists(id) ON DELETE CASCADE,
+            media_id INTEGER REFERENCES media_items(id) ON DELETE CASCADE,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (list_id, media_id)
+        );
+    `;
+    db.exec(createListItemsTable);
+
     const mediaTableInfo = db.pragma("table_info(media_items)");
     const mediaColumnNames = mediaTableInfo.map(col => col.name);
     if (!mediaColumnNames.includes('external_id')) db.exec(`ALTER TABLE media_items ADD COLUMN external_id TEXT UNIQUE`);
@@ -72,17 +93,25 @@ const initDB = () => {
     }
 
     const createUpdateTrigger = `
-        CREATE TRIGGER IF NOT EXISTS update_media_items_time 
-          AFTER UPDATE ON media_items
+        CREATE TRIGGER IF NOT EXISTS update_media_items_time
+           AFTER UPDATE ON media_items
         BEGIN
             UPDATE media_items SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END;
     `;
     db.exec(createUpdateTrigger);
 
+    const createListUpdateTrigger = `
+        CREATE TRIGGER IF NOT EXISTS update_custom_lists_time
+           AFTER UPDATE ON custom_lists
+        BEGIN
+            UPDATE custom_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+        END;
+    `;
+    db.exec(createListUpdateTrigger);
+
     console.log('База даних ініціалізована.');
 };
 
 initDB();
-
 export default db;
