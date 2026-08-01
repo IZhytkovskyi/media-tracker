@@ -1,3 +1,4 @@
+// src/controllers/movies.js
 import db from '../db/database.js';
 
 const getTmdbHeaders = () => ({
@@ -12,15 +13,13 @@ const getSeriesTmdbId = (mediaId) => {
     return null;
 };
 
-// --- КАСКАДНЕ ОНОВЛЕННЯ ВНИЗ (Сезон -> Серії) ---
-// Повертає { ok: true } при успіху, { ok: false, error: '...' } при провалі,
-// щоб виклик у createMediaLog/updateMediaLog міг повідомити користувача,
-// а не тихо звітувати про "успіх", коли серії насправді не позначились.
+// --- Каскадне оновлення (Сезон -> Епізоди) ---
+// Якщо сезон відмічається як completed, отримуємо всі епізоди з TMDB і створюємо/оновлюємо їх та createMediaLog/updateMediaLog
 const cascadeDown = async (mediaItem, finishDate) => {
     if (mediaItem.media_type === 'episode' || mediaItem.media_type === 'movie') return { ok: true };
 
     if (!process.env.TMDB_READ_TOKEN) {
-        const msg = 'cascadeDown: TMDB_READ_TOKEN не заданий у .env — неможливо підтягнути список серій';
+        const msg = 'cascadeDown: TMDB_READ_TOKEN відсутній в .env';
         console.error(msg);
         return { ok: false, error: msg };
     }
@@ -44,7 +43,7 @@ const cascadeDown = async (mediaItem, finishDate) => {
             }
             
             const data = await res.json();
-            if (!data.episodes) return { ok: false, error: 'cascadeDown: TMDB не повернув список серій (episodes) для сезону' };
+            if (!data.episodes) return { ok: false, error: 'cascadeDown: TMDB не повернув список (episodes) епізодів' };
 
             const series = db.prepare('SELECT title FROM media_items WHERE id = ?').get(mediaItem.parent_id);
             const seriesTitle = series ? series.title : '';
@@ -62,19 +61,19 @@ const cascadeDown = async (mediaItem, finishDate) => {
                         db.prepare(`UPDATE media_items SET status = 'completed', finish_date = COALESCE(finish_date, ?), start_date = COALESCE(start_date, ?) WHERE id = ?`).run(finishDate, finishDate, epMedia.id);
                     }
 
-                    // Додаємо лог для серії з коментарем
+                    // Додаємо лог, тільки якщо його ще немає для цієї дати
                     const existingLog = db.prepare('SELECT id FROM watch_logs WHERE media_id = ? AND finish_date = ?').get(epMedia.id, finishDate);
                     if (!existingLog && finishDate) {
-                        const comment = `Переглянуто протягом ${mediaItem.season} сезону`;
+                        const comment = `Автоматично відмічено при завершенні сезону ${mediaItem.season}`;
                         db.prepare(`INSERT INTO watch_logs (media_id, start_date, finish_date, comment) VALUES (?, ?, ?, ?)`).run(epMedia.id, finishDate, finishDate, comment);
                     }
                 }
             });
             transaction();
-            console.log(`Успішно відмічено ${data.episodes.length} серій для сезону ${mediaItem.season}`);
+            console.log(`Успішно оновлено/додано ${data.episodes.length} епізодів для сезону ${mediaItem.season}`);
             return { ok: true };
         } catch (e) {
-            console.error('Помилка при каскадному оновленні серій:', e);
+            console.error('Помилка в cascadeDown:', e);
             return { ok: false, error: e.message };
         }
     } else if (mediaItem.media_type === 'series') {
@@ -86,7 +85,7 @@ const cascadeDown = async (mediaItem, finishDate) => {
                 return { ok: false, error: msg };
             }
             const data = await res.json();
-            if (!data.seasons) return { ok: false, error: 'cascadeDown: TMDB не повернув список сезонів (seasons)' };
+            if (!data.seasons) return { ok: false, error: 'cascadeDown: TMDB не повернув список (seasons)' };
 
             for (const s of data.seasons.filter(s => s.season_number > 0)) {
                 const seasonExtId = `season_${s.id}`;
@@ -102,25 +101,25 @@ const cascadeDown = async (mediaItem, finishDate) => {
 
                 const existingLog = db.prepare('SELECT id FROM watch_logs WHERE media_id = ? AND finish_date = ?').get(seasonMedia.id, finishDate);
                 if (!existingLog && finishDate) {
-                    const comment = `Переглянуто разом з усім серіалом`;
+                    const comment = `Автоматично відмічено при завершенні серіалу`;
                     db.prepare(`INSERT INTO watch_logs (media_id, start_date, finish_date, comment) VALUES (?, ?, ?, ?)`).run(seasonMedia.id, finishDate, finishDate, comment);
                 }
 
                 const childResult = await cascadeDown(seasonMedia, finishDate);
                 if (childResult && childResult.ok === false) {
-                    // Не зупиняємо цикл по інших сезонах, але фіксуємо, що щось не вдалось
-                    console.error(`cascadeDown: сезон ${s.season_number} не вдалось повністю обробити: ${childResult.error}`);
+                    // Логуємо, але продовжуємо
+                    console.error(`cascadeDown: Помилка при обробці сезону ${s.season_number} серіалу: ${childResult.error}`);
                 }
             }
             return { ok: true };
         } catch (e) {
-            console.error('Помилка при каскадному оновленні сезонів:', e);
+            console.error('Помилка в cascadeDown для серіалу:', e);
             return { ok: false, error: e.message };
         }
     }
 };
 
-// --- КАСКАДНЕ ОНОВЛЕННЯ ВГОРУ (Серія -> Сезон -> Серіал) ---
+// --- Каскадне оновлення статусу батьків (Епізод -> Сезон -> Серіал) ---
 const cascadeUp = async (parentId, finishDate) => {
     if (!parentId) return;
 
@@ -187,14 +186,21 @@ const syncMediaStats = async (mediaId) => {
         newStatus = isWatching ? 'watching' : 'completed';
         finishDateToCascade = latestLog.finish_date || new Date().toISOString().split('T')[0];
         
+        // ВИПРАВЛЕНО: Прибрано COALESCE, тепер значення суворо відображають останній лог
         db.prepare(`
             UPDATE media_items 
-            SET start_date = COALESCE(?, start_date), 
-                finish_date = COALESCE(?, finish_date), 
-                rating = COALESCE(?, rating),
+            SET start_date = ?, 
+                finish_date = ?, 
+                rating = ?,
                 status = ?
             WHERE id = ?
-        `).run(latestLog.start_date || null, latestLog.finish_date || null, latestLog.rating, newStatus, mediaId);
+        `).run(
+            latestLog.start_date || null, 
+            latestLog.finish_date || null, 
+            latestLog.rating !== undefined ? latestLog.rating : null, 
+            newStatus, 
+            mediaId
+        );
     } else {
         newStatus = null;
         db.prepare(`
@@ -249,23 +255,19 @@ export const getAllMedia = async (request, reply) => {
 
 export const getMediaChildren = async (request, reply) => {
     const { id } = request.params;
-
     const items = db.prepare('SELECT * FROM media_items WHERE parent_id = ?').all(id);
-
     const formattedItems = items.map(item => {
         let parsedGenres = [];
         try { parsedGenres = item.genres ? JSON.parse(item.genres) : []; } catch (e) { }
         return { ...item, genres: parsedGenres };
     });
-
     return { data: formattedItems };
 };
 
 export const getMediaById = async (request, reply) => {
     const { id } = request.params;
     const item = db.prepare('SELECT * FROM media_items WHERE id = ?').get(id);
-
-    if (!item) return reply.code(404).send({ error: 'Запис не знайдено' });
+    if (!item) return reply.code(404).send({ error: 'Елемент не знайдено' });
     
     try { item.genres = item.genres ? JSON.parse(item.genres) : []; } catch (e) { item.genres = []; }
     return { data: item };
@@ -288,7 +290,7 @@ export const getMediaByExternalId = async (request, reply) => {
         }
     }
     
-    if (!item) return reply.code(404).send({ error: 'Запис не знайдено' });
+    if (!item) return reply.code(404).send({ error: 'Елемент не знайдено' });
 
     try { item.genres = item.genres ? JSON.parse(item.genres) : []; } catch (e) { item.genres = []; }
     return { data: item };
@@ -298,20 +300,20 @@ export const createMedia = async (request, reply) => {
     const data = request.body;
     const genresStr = data.genres ? JSON.stringify(data.genres) : null;
 
-    // Сезон і серія без батьківського запису — це "сирітський" запис:
-    // getSeriesTmdbId ніколи не знайде для нього TMDB ID серіалу, і
-    // cascadeDown/cascadeUp мовчки перестануть працювати для нього.
+    // Спрощення створення епізодів
+    // Вимагаємо parent_id. Клієнт повинен спочатку викликати getSeriesTmdbId і отримати/створити TMDB ID серіалу та сезону
+    // щоб каскадні оновлення (cascadeDown/cascadeUp) працювали коректно.
     if ((data.media_type === 'season' || data.media_type === 'episode') && !data.parent_id) {
         reply.code(400);
-        return { error: `Не можна створити запис типу '${data.media_type}' без parent_id (батьківського серіалу/сезону)` };
+        return { error: `Для типу '${data.media_type}' обов'язкове поле parent_id (ідентифікатор батьківського елемента)` };
     }
 
     try {
         const stmt = db.prepare(`
             INSERT INTO media_items 
-            (title, original_title, media_type, external_id, parent_id, status, rating, review, 
-             season, episode, total_seasons, total_episodes, genres, 
-             poster_path, backdrop_path, release_date, tmdb_id, imdb_id)
+             (title, original_title, media_type, external_id, parent_id, status, rating, review, 
+              season, episode, total_seasons, total_episodes, genres, 
+              poster_path, backdrop_path, release_date, tmdb_id, imdb_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         
@@ -327,10 +329,10 @@ export const createMedia = async (request, reply) => {
         try { newItem.genres = newItem.genres ? JSON.parse(newItem.genres) : []; } catch(e){ newItem.genres=[]; }
         
         reply.code(201);
-        return { message: 'Створено успішно', data: newItem };
+        return { message: 'Елемент додано', data: newItem };
     } catch (error) {
         reply.code(400);
-        return { error: 'Помилка при створенні', details: error.message };
+        return { error: 'Помилка при додаванні', details: error.message };
     }
 };
 
@@ -339,7 +341,7 @@ export const updateMedia = async (request, reply) => {
     const updates = request.body;
     
     const existing = db.prepare('SELECT * FROM media_items WHERE id = ?').get(id);
-    if (!existing) return reply.code(404).send({ error: 'Запис не знайдено' });
+    if (!existing) return reply.code(404).send({ error: 'Елемент не знайдено' });
 
     const allowedFields = ['title', 'original_title', 'media_type', 'status', 'rating', 'review', 'season', 'episode', 'total_seasons', 'total_episodes', 'genres', 'poster_path', 'backdrop_path', 'release_date', 'tmdb_id', 'imdb_id'];
     
@@ -353,7 +355,7 @@ export const updateMedia = async (request, reply) => {
         }
     }
     
-    if (fields.length === 0) return { message: 'Немає даних для оновлення' };
+    if (fields.length === 0) return { message: 'Немає полів для оновлення' };
 
     values.push(id);
     
@@ -373,7 +375,7 @@ export const updateMedia = async (request, reply) => {
 
         try { updatedItem.genres = updatedItem.genres ? JSON.parse(updatedItem.genres) : []; } catch(e){ updatedItem.genres=[]; }
         
-        return { message: 'Оновлено успішно', data: updatedItem };
+        return { message: 'Елемент оновлено', data: updatedItem };
     } catch (error) {
         reply.code(400);
         return { error: 'Помилка при оновленні', details: error.message };
@@ -383,9 +385,8 @@ export const updateMedia = async (request, reply) => {
 export const deleteMedia = async (request, reply) => {
     const { id } = request.params;
     const info = db.prepare('DELETE FROM media_items WHERE id = ?').run(id);
-
-    if (info.changes === 0) return reply.code(404).send({ error: 'Запис не знайдено' });
-    return { message: 'Видалено успішно' };
+    if (info.changes === 0) return reply.code(404).send({ error: 'Елемент не знайдено' });
+    return { message: 'Елемент видалено' };
 };
 
 export const getMediaLogs = async (request, reply) => {
@@ -405,7 +406,6 @@ export const getMediaLogs = async (request, reply) => {
     if (media.media_type === 'series') {
         const seasons = db.prepare('SELECT id FROM media_items WHERE parent_id = ?').all(media.id);
         targetIds.push(...seasons.map(s => s.id));
-
         const episodes = db.prepare('SELECT id FROM media_items WHERE parent_id IN (SELECT id FROM media_items WHERE parent_id = ?)').all(media.id);
         targetIds.push(...episodes.map(e => e.id));
     } else if (media.media_type === 'season') {
@@ -414,8 +414,8 @@ export const getMediaLogs = async (request, reply) => {
     }
 
     targetIds = [...new Set(targetIds.filter(Boolean))];
-
     const placeholders = targetIds.map(() => '?').join(',');
+
     const logs = db.prepare(`
         SELECT w.*, m.media_type, m.season, m.episode, m.title as media_title 
         FROM watch_logs w JOIN media_items m ON w.media_id = m.id
@@ -431,7 +431,7 @@ export const createMediaLog = async (request, reply) => {
     let { start_date, finish_date, rating, comment } = request.body;
 
     const existingMedia = db.prepare('SELECT id FROM media_items WHERE id = ?').get(id);
-    if (!existingMedia) return reply.code(404).send({ error: 'Медіа не знайдено' });
+    if (!existingMedia) return reply.code(404).send({ error: 'Елемент не знайдено' });
 
     const cleanRating = (rating !== undefined && rating !== null && rating !== '') ? parseFloat(rating) : null;
 
@@ -446,15 +446,16 @@ export const createMediaLog = async (request, reply) => {
         reply.code(201);
         if (cascadeResult && cascadeResult.ok === false) {
             return {
-                message: 'Лог створено, але не вдалось автоматично позначити серії',
+                message: 'Запис створено, але виникли помилки при каскадному оновленні серій (перевірте логи сервера)',
                 id: info.lastInsertRowid,
                 warning: cascadeResult.error
             };
         }
-        return { message: 'Лог створено', id: info.lastInsertRowid };
+
+        return { message: 'Запис створено', id: info.lastInsertRowid };
     } catch (error) {
         reply.code(400);
-        return { error: 'Помилка створення логу', details: error.message };
+        return { error: 'Помилка при створенні запису', details: error.message };
     }
 };
 
@@ -463,7 +464,7 @@ export const updateMediaLog = async (request, reply) => {
     const { start_date, finish_date, rating, comment } = request.body;
 
     const existingLog = db.prepare('SELECT * FROM watch_logs WHERE id = ?').get(log_id);
-    if (!existingLog) return reply.code(404).send({ error: 'Лог не знайдено' });
+    if (!existingLog) return reply.code(404).send({ error: 'Запис не знайдено' });
 
     const cleanRating = (rating !== undefined && rating !== null && rating !== '') ? parseFloat(rating) : null;
     const newStartDate = start_date !== undefined ? start_date : existingLog.start_date;
@@ -478,17 +479,18 @@ export const updateMediaLog = async (request, reply) => {
         `).run(newStartDate || null, newFinishDate || null, cleanRating, newComment, log_id);
 
         const cascadeResult = await syncMediaStats(existingLog.media_id);
-
+        
         if (cascadeResult && cascadeResult.ok === false) {
             return {
-                message: 'Лог оновлено, але не вдалось автоматично позначити серії',
+                message: 'Запис оновлено, але виникли помилки при каскадному оновленні (перевірте логи сервера)',
                 warning: cascadeResult.error
             };
         }
-        return { message: 'Лог оновлено' };
+
+        return { message: 'Запис оновлено' };
     } catch (error) {
         reply.code(400);
-        return { error: 'Помилка оновлення логу', details: error.message };
+        return { error: 'Помилка при оновленні запису', details: error.message };
     }
 };
 
@@ -496,11 +498,11 @@ export const deleteMediaLog = async (request, reply) => {
     const { log_id } = request.params;
     
     const log = db.prepare('SELECT media_id FROM watch_logs WHERE id = ?').get(log_id);
-    if (!log) return reply.code(404).send({ error: 'Лог не знайдено' });
+    if (!log) return reply.code(404).send({ error: 'Запис не знайдено' });
     
     db.prepare('DELETE FROM watch_logs WHERE id = ?').run(log_id);
     
     await syncMediaStats(log.media_id);
       
-    return { message: 'Лог видалено' };
+    return { message: 'Запис видалено' };
 };

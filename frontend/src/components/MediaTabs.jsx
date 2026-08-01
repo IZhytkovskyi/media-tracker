@@ -47,7 +47,6 @@ const formatCurrency = (amount) => {
   return '$' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 };
 
-// Спільний компонент Інфо-рядка
 const InfoRow = ({ label, value, children }) => {
   if (!value && !children) return null;
   return (
@@ -60,7 +59,6 @@ const InfoRow = ({ label, value, children }) => {
   );
 };
 
-// Компонент для фото персони з фолбеком на іконку
 const PersonImage = ({ src, alt }) => {
   if (src) {
     return <img src={src} alt={alt} style={styles.personPhoto} loading="lazy" />;
@@ -79,19 +77,16 @@ const PersonImage = ({ src, alt }) => {
   );
 };
 
-// ОПТИМІЗАЦІЯ: Універсальний компонент для горизонтального списку людей (Актори/Знімальна група)
 const HorizontalPeopleList = ({ title, people, isCrew = false, limit = 12 }) => {
   const navigate = useNavigate();
-  
   if (!people || people.length === 0) return null;
 
-  // Фільтруємо лише основні професії для знімальної групи, щоб не перевантажувати список
+  // Фільтруємо та обмежуємо кількість
   let displayPeople = people;
   if (isCrew) {
     const mainJobs = ['Director', 'Creator', 'Screenplay', 'Writer', 'Director of Photography', 'Original Music Composer'];
     displayPeople = people.filter(c => mainJobs.includes(c.original_job));
   }
-  
   displayPeople = displayPeople.slice(0, limit);
   if (displayPeople.length === 0) return null;
 
@@ -102,7 +97,7 @@ const HorizontalPeopleList = ({ title, people, isCrew = false, limit = 12 }) => 
         {displayPeople.map((person, idx) => (
           <div 
             key={`${isCrew ? 'crew' : 'actor'}-${person.id}-${idx}`} 
-            style={{...styles.personCard, cursor: 'pointer'}} 
+            style={{...styles.personCard, cursor: 'pointer'}}
             onClick={() => navigate(`/person/${person.id}`)}
           >
             <PersonImage src={person.profile_path} alt={person.name} />
@@ -122,7 +117,6 @@ const HorizontalPeopleList = ({ title, people, isCrew = false, limit = 12 }) => 
   );
 };
 
-// Спільний компонент для вкладок другого рівня (із стрілками прокрутки)
 const ScrollableSubTabs = ({ tabs, activeTab, onTabChange, containerStyle = {} }) => {
   const scrollRef = useRef(null);
   const [showArrows, setShowArrows] = useState(false);
@@ -175,11 +169,11 @@ const scrollBtnStyle = {
   cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s ease', boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
 };
 
-// --- 1. Вкладка Головна (Серіал/Фільм) ---
+// --- 1. Основна вкладка (Фільм/Серіал) ---
 export function TabMain({ media, tmdbData }) {
   const navigate = useNavigate();
   const releaseYear = media.release_date ? media.release_date.split('-')[0] : '';
-
+  
   const formatRuntime = (minutes) => {
     if (!minutes) return null;
     return `${minutes} хв.`;
@@ -256,7 +250,7 @@ export function TabMain({ media, tmdbData }) {
               >
                 <img src={season.poster_path || 'https://via.placeholder.com/105x155?text=No+Poster'} alt={season.name} style={styles.personPhoto} loading="lazy" />
                 <div style={styles.personName}>{season.name}</div>
-                <div style={styles.personRole}>{season.episode_count} серій</div>
+                <div style={styles.personRole}>{season.episode_count} епізодів</div>
               </div>
             ))}
           </div>
@@ -269,50 +263,46 @@ export function TabMain({ media, tmdbData }) {
   );
 }
 
-// --- Вкладка Головна (Сезон) ---
+// --- Основна вкладка (Сезон) ---
 export function TabMainSeason({ tmdbData }) {
   return (
     <>
       <div style={styles.detailsBox}>
-        <InfoRow label="Прем'єра сезону:" value={formatDate(tmdbData?.air_date)} />
-        <InfoRow label="Кількість серій:" value={tmdbData?.episodes?.length} />
+        <InfoRow label="Дата виходу:" value={formatDate(tmdbData?.air_date)} />
+        <InfoRow label="Кількість епізодів:" value={tmdbData?.episodes?.length} />
       </div>
-
       {tmdbData?.overview && (
         <div style={styles.sectionBlock}>
           <p style={styles.descriptionText}>{tmdbData.overview}</p>
         </div>
       )}
-
       <HorizontalPeopleList title="У ролях:" people={tmdbData?.cast} />
       <HorizontalPeopleList title="Автори:" people={tmdbData?.crew} isCrew={true} />
     </>
   );
 }
 
-// --- Вкладка Головна (Серія) ---
+// --- Основна вкладка (Епізод) ---
 export function TabMainEpisode({ tmdbData }) {
   return (
     <>
       <div style={styles.detailsBox}>
         <InfoRow label="Дата виходу:" value={formatDate(tmdbData?.air_date)} />
         <InfoRow label="Тривалість:" value={tmdbData?.runtime ? `${tmdbData.runtime} хв.` : '-'} />
-        <InfoRow label="Рейтинг TMDB:" value={tmdbData?.vote_average > 0 ? `${tmdbData.vote_average.toFixed(1)} / 10` : '-'} />
+        <InfoRow label="Оцінка TMDB:" value={tmdbData?.vote_average > 0 ? `${tmdbData.vote_average.toFixed(1)} / 10` : '-'} />
       </div>
-
       {tmdbData?.overview && (
         <div style={styles.sectionBlock}>
           <p style={styles.descriptionText}>{tmdbData.overview}</p>
         </div>
       )}
-
       <HorizontalPeopleList title="У ролях:" people={tmdbData?.cast} />
       <HorizontalPeopleList title="Автори:" people={tmdbData?.crew} isCrew={true} />
     </>
   );
 }
 
-// --- 2. Вкладка Актори та знімальна група ---
+// --- 2. Вкладка Актори ---
 export function TabActors({ tmdbData }) {
   const navigate = useNavigate();
   const [activeCrewTab, setActiveCrewTab] = useState('cast');
@@ -326,11 +316,11 @@ export function TabActors({ tmdbData }) {
     if (!tmdbData?.crew) return tabs;
 
     const jobGroups = {
-      'Режисери': ['Director', 'Creator'],
-      'Сценаристи': ['Screenplay', 'Writer', 'Story'],
-      'Оператори': ['Director of Photography', 'Camera Operator'],
-      'Композитори': ['Original Music Composer', 'Music'],
-      'Продюсери': ['Producer', 'Executive Producer', 'Co-Producer'],
+      'Режисура': ['Director', 'Creator'],
+      'Сценарій': ['Screenplay', 'Writer', 'Story'],
+      'Камера': ['Director of Photography', 'Camera Operator'],
+      'Музика': ['Original Music Composer', 'Music'],
+      'Продюсування': ['Producer', 'Executive Producer', 'Co-Producer'],
       'Художники': ['Production Design', 'Art Direction', 'Set Decoration'],
       'Монтаж': ['Editor'],
       'Костюми та грим': ['Costume Design', 'Makeup Artist', 'Hairstylist'],
@@ -357,17 +347,14 @@ export function TabActors({ tmdbData }) {
     });
 
     Array.from(ungroupedJobs).sort().forEach(job => tabs.push({ id: job, label: job, jobs: [job] }));
-
     return tabs;
   }, [tmdbData]);
 
   const displayedCrew = useMemo(() => {
     if (!tmdbData) return [];
     if (activeCrewTab === 'cast') return tmdbData.cast || [];
-
     const currentTab = crewSubTabs.find(t => t.id === activeCrewTab);
     if (currentTab && currentTab.jobs) return tmdbData.crew.filter(c => currentTab.jobs.includes(c.original_job));
-
     return [];
   }, [tmdbData, activeCrewTab, crewSubTabs]);
 
@@ -415,7 +402,7 @@ export function TabActors({ tmdbData }) {
             </div>
           )}
         </div>
-      ) : <p style={styles.emptyText}>Немає інформації.</p>}
+      ) : <p style={styles.emptyText}>Немає даних.</p>}
     </>
   );
 }
@@ -430,12 +417,12 @@ export function TabShots({ tmdbData }) {
 
   useEffect(() => { 
       setVisibleImageCount(IMAGES_PER_PAGE); 
-      setFilterLang('all'); 
-  }, [activeShotsTab]);
+      setFilterLang('all');
+   }, [activeShotsTab]);
 
   const imageSubTabs = useMemo(() => {
     const tabs = [];
-    if (tmdbData?.images?.backdrops?.length > 0) tabs.push({ id: 'backdrops', label: 'Кадри' });
+    if (tmdbData?.images?.backdrops?.length > 0) tabs.push({ id: 'backdrops', label: 'Кадри / Фони' });
     if (tmdbData?.images?.posters?.length > 0) tabs.push({ id: 'posters', label: 'Постери' });
     if (tmdbData?.images?.logos?.length > 0) tabs.push({ id: 'logos', label: 'Логотипи' });
     return tabs;
@@ -448,7 +435,7 @@ export function TabShots({ tmdbData }) {
   }, [imageSubTabs, activeShotsTab]);
 
   const rawImages = tmdbData?.images?.[activeShotsTab] || [];
-
+  
   const availableLangs = useMemo(() => {
     const langs = new Set(rawImages.map(img => img.iso_639_1 || 'none'));
     return Array.from(langs).sort();
@@ -459,8 +446,9 @@ export function TabShots({ tmdbData }) {
     if (filterLang !== 'all') {
       filtered = filtered.filter(img => (img.iso_639_1 || 'none') === filterLang);
     }
+    
     const originalLang = tmdbData?.original_language;
-
+    
     filtered.sort((a, b) => {
       if (activeShotsTab === 'posters') {
         const getPriority = (lang) => {
@@ -503,16 +491,16 @@ export function TabShots({ tmdbData }) {
               value={filterLang}
               onChange={(e) => setFilterLang(e.target.value)}
               style={{ 
-                appearance: 'none', WebkitAppearance: 'none', background: 'rgba(56, 189, 248, 0.05)', color: '#38bdf8', 
-                border: '1px solid rgba(56, 189, 248, 0.2)', padding: '8px 40px', borderRadius: '20px', fontSize: '13px', 
-                fontWeight: '600', cursor: 'pointer', outline: 'none', transition: 'all 0.2s ease', boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                 appearance: 'none', WebkitAppearance: 'none', background: 'rgba(56, 189, 248, 0.05)', color: '#38bdf8', 
+                 border: '1px solid rgba(56, 189, 248, 0.2)', padding: '8px 40px', borderRadius: '20px', fontSize: '13px', 
+                 fontWeight: '600', cursor: 'pointer', outline: 'none', transition: 'all 0.2s ease', boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
               }}
               onMouseEnter={(e) => { e.target.style.background = 'rgba(56, 189, 248, 0.1)'; e.target.style.borderColor = 'rgba(56, 189, 248, 0.4)'; }}
               onMouseLeave={(e) => { e.target.style.background = 'rgba(56, 189, 248, 0.05)'; e.target.style.borderColor = 'rgba(56, 189, 248, 0.2)'; }}
             >
-              <option value="all" style={{ background: '#1e293b', color: '#f8fafc' }}>Усі мови</option>
+              <option value="all" style={{ background: '#1e293b', color: '#f8fafc' }}>Всі мови</option>
               {availableLangs.map(lang => (
-                <option key={lang} value={lang} style={{ background: '#1e293b', color: '#f8fafc' }}>{lang === 'none' ? 'Без тексту' : lang.toUpperCase()}</option>
+                <option key={lang} value={lang} style={{ background: '#1e293b', color: '#f8fafc' }}>{lang === 'none' ? 'Без мови' : lang.toUpperCase()}</option>
               ))}
             </select>
             <div style={{ position: 'absolute', right: '14px', pointerEvents: 'none', display: 'flex', color: '#38bdf8' }}><ChevronDown size={16} /></div>
@@ -525,7 +513,7 @@ export function TabShots({ tmdbData }) {
           <div style={{...styles.imagesGrid, gridTemplateColumns: activeShotsTab === 'posters' ? 'repeat(auto-fill, minmax(160px, 1fr))' : 'repeat(auto-fill, minmax(280px, 1fr))'}}>
             {paginatedImages.map((img, idx) => (
               <div key={`${activeShotsTab}-${idx}`} className="image-card" style={{ cursor: 'pointer' }} onClick={() => setLightboxIndex(idx)}>
-                <img src={`https://image.tmdb.org/t/p/${activeShotsTab === 'backdrops' ? 'w780' : 'w500'}${img.file_path}`} alt={`Кадр ${idx}`} className={`img-${activeShotsTab}`} loading="lazy" />
+                <img src={`https://image.tmdb.org/t/p/${activeShotsTab === 'backdrops' ? 'w780' : 'w500'}${img.file_path}`} alt={`Зображення ${idx}`} className={`img-${activeShotsTab}`} loading="lazy" />
               </div>
             ))}
           </div>
@@ -549,8 +537,11 @@ export function TabShots({ tmdbData }) {
           backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', justifyContent: 'center', alignItems: 'center'
         }}>
           <button onClick={() => setLightboxIndex(null)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', zIndex: 10000 }}><X size={36} /></button>
+          
           <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => Math.max(prev - 1, 0)); }} style={{ position: 'absolute', left: '20px', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '15px', borderRadius: '50%', cursor: lightboxIndex === 0 ? 'default' : 'pointer', opacity: lightboxIndex === 0 ? 0.3 : 1 }} disabled={lightboxIndex === 0}><ChevronLeft size={32} /></button>
-          <img src={`https://image.tmdb.org/t/p/original${displayedImages[lightboxIndex].file_path}`} alt="Повний розмір" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px' }} />
+          
+          <img src={`https://image.tmdb.org/t/p/original${displayedImages[lightboxIndex].file_path}`} alt="Збільшене зображення" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px' }} />
+          
           <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => Math.min(prev + 1, displayedImages.length - 1)); }} style={{ position: 'absolute', right: '20px', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '15px', borderRadius: '50%', cursor: lightboxIndex === displayedImages.length - 1 ? 'default' : 'pointer', opacity: lightboxIndex === displayedImages.length - 1 ? 0.3 : 1 }} disabled={lightboxIndex === displayedImages.length - 1}><ChevronRight size={32} /></button>
         </div>
       )}
@@ -558,97 +549,145 @@ export function TabShots({ tmdbData }) {
   );
 }
 
-// --- 4. Вкладка Релізи (Дати виходу) ---
+// --- 4. Вкладка Прем'єри (РЕДИЗАЙН У СПИСОК) ---
 export function TabPremiere({ tmdbData }) {
   const getReleaseTypeInfo = (type) => {
     switch (type) {
-      case 1: return { label: 'Прем\'єра', icon: <Star size={14} />, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' };
-      case 2: return { label: 'У кіно (Обмежено)', icon: <Video size={14} />, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' };
-      case 3: return { label: 'У кіно', icon: <Popcorn size={14} />, color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' };
+      case 1: return { label: 'Фестиваль', icon: <Star size={14} />, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' };
+      case 2: return { label: 'Кінопрокат (Обмежений)', icon: <Video size={14} />, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' };
+      case 3: return { label: 'Кінопрокат', icon: <Popcorn size={14} />, color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' };
       case 4: return { label: 'Цифровий реліз', icon: <MonitorPlay size={14} />, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' };
-      case 5: return { label: 'Фізичні носії', icon: <Disc size={14} />, color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)' };
-      case 6: return { label: 'ТБ/Стрімінг', icon: <Tv size={14} />, color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' };
+      case 5: return { label: 'Фізичний носій', icon: <Disc size={14} />, color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)' };
+      case 6: return { label: 'Телебачення', icon: <Tv size={14} />, color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' };
       default: return { label: 'Невідомо', icon: <Calendar size={14} />, color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' };
     }
   };
 
-  if (!tmdbData?.releases || tmdbData.releases.length === 0) return <p style={styles.emptyText}>Немає даних про дати релізу.</p>;
+  if (!tmdbData?.releases || tmdbData.releases.length === 0) return <p style={styles.emptyText}>Немає даних про прем'єри.</p>;
 
   const productionCountries = tmdbData.production_countries || [];
 
-  const sortedReleases = [...tmdbData.releases].sort((a, b) => {
+  // 1. Формування масиву закріплених прем'єр
+  const pinnedCountries = tmdbData.releases.filter(r => r.country === 'UA' || productionCountries.includes(r.country));
+  
+  pinnedCountries.sort((a, b) => {
     if (a.country === 'UA') return -1;
     if (b.country === 'UA') return 1;
-    const aIsProd = productionCountries.includes(a.country);
-    const bIsProd = productionCountries.includes(b.country);
-    if (aIsProd && !bIsProd) return -1;
-    if (!aIsProd && bIsProd) return 1;
     return getCountryName(a.country).localeCompare(getCountryName(b.country), 'uk');
   });
 
+  // 2. Формування загального хронологічного списку
+  const allReleasesTimeline = [];
+  tmdbData.releases.forEach(releaseInfo => {
+    releaseInfo.dates.forEach(dateItem => {
+      allReleasesTimeline.push({
+        country: releaseInfo.country,
+        ...dateItem
+      });
+    });
+  });
+
+  // Сортуємо від найстарішої до найновішої дати
+  allReleasesTimeline.sort((a, b) => new Date(a.date) - new Date(b.date));
+
   return (
     <div style={styles.premiereContainer}>
-      <h3 style={styles.sectionTitle}>Дати виходу у світі</h3>
-      <div style={{ ...styles.countryGrid, gap: '20px' }}>
-        {sortedReleases.map((countryRelease) => {
-          const isUkraine = countryRelease.country === 'UA';
-          const isProducer = productionCountries.includes(countryRelease.country);
-
-          return (
-            <div key={countryRelease.country} style={{
-                ...styles.countryCard,
-                backgroundColor: isUkraine ? 'rgba(56, 189, 248, 0.04)' : '#111827',
-              borderColor: isUkraine ? '#0284c7' : (isProducer ? '#334155' : '#1e293b'),
-              boxShadow: isUkraine ? '0 4px 12px rgba(2, 132, 199, 0.1)' : 'none'
-            }}>
-              <div style={{ ...styles.countryCardHeader, borderBottom: `1px solid ${isUkraine ? 'rgba(56, 189, 248, 0.2)' : '#1e293b'}`, paddingBottom: '12px' }}>
-                <span style={{ fontSize: '28px', lineHeight: '1' }}>{getFlagEmoji(countryRelease.country)}</span>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <h4 style={{ ...styles.countryName, fontSize: '16px', fontWeight: isUkraine ? 'bold' : '600', color: isUkraine ? '#bae6fd' : '#f8fafc' }}>
-                    {getCountryName(countryRelease.country)}
-                  </h4>
-                  {isProducer && !isUkraine && <span style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Країна виробник</span>}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {[...countryRelease.dates].sort((a, b) => new Date(a.date) - new Date(b.date)).map((dateItem, idx) => {
-                  const typeInfo = getReleaseTypeInfo(dateItem.type);
-                  const isLast = idx === countryRelease.dates.length - 1;
+      
+      {/* Закріплені прем'єри */}
+      {pinnedCountries.length > 0 && (
+        <div style={{ marginBottom: '40px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {pinnedCountries.map((countryRelease) => {
+              const isUkraine = countryRelease.country === 'UA';
+              
+              return (
+                <div key={`pinned-${countryRelease.country}`} style={{
+                  backgroundColor: isUkraine ? 'rgba(56, 189, 248, 0.04)' : '#1a1a1a',
+                  border: isUkraine ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid #2a2a2a',
+                  borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #333', paddingBottom: '10px' }}>
+                    <span style={{ fontSize: '24px', lineHeight: '1' }}>{getFlagEmoji(countryRelease.country)}</span>
+                    <h4 style={{ margin: 0, fontSize: '16px', fontWeight: isUkraine ? 'bold' : '600', color: isUkraine ? '#bae6fd' : '#f8fafc' }}>
+                      {getCountryName(countryRelease.country)}
+                    </h4>
+                  </div>
                   
-                  return (
-                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', padding: '12px 0', borderBottom: isLast ? 'none' : '1px solid #1e293b' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: typeInfo.color, backgroundColor: typeInfo.bg, padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                          {typeInfo.icon}
-                          <span>{typeInfo.label}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {[...countryRelease.dates].sort((a, b) => new Date(a.date) - new Date(b.date)).map((dateItem, idx) => {
+                      const typeInfo = getReleaseTypeInfo(dateItem.type);
+                      return (
+                        <div key={idx} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '15px', padding: '10px', backgroundColor: '#111827', borderRadius: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: typeInfo.color, minWidth: '160px', backgroundColor: typeInfo.bg, padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
+                            {typeInfo.icon}
+                            <span>{typeInfo.label}</span>
+                          </div>
+                          <div style={{ color: '#e2e8f0', fontSize: '15px', fontWeight: '500', minWidth: '120px' }}>
+                            {formatDate(dateItem.date)}
+                          </div>
+                          {dateItem.note && <div style={{ color: '#94a3b8', fontSize: '13px', fontStyle: 'italic', flex: 1 }}>{dateItem.note}</div>}
                         </div>
-                        {dateItem.note && <span style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic', textAlign: 'right', maxWidth: '50%' }}>{dateItem.note}</span>}
-                      </div>
-                      <div style={{ color: '#e2e8f0', fontSize: '15px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {formatDate(dateItem.date)}
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Хронологія всіх прем'єр */}
+      <div>
+        <h3 style={styles.sectionTitle}>Прем'єри</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {allReleasesTimeline.map((item, idx) => {
+            const typeInfo = getReleaseTypeInfo(item.type);
+            const isUkraine = item.country === 'UA';
+            
+            return (
+              <div key={`timeline-${idx}`} style={{
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '15px', padding: '12px 16px',
+                backgroundColor: isUkraine ? 'rgba(56, 189, 248, 0.04)' : '#1a1a1a',
+                borderRadius: '8px', border: isUkraine ? '1px solid rgba(56, 189, 248, 0.2)' : '1px solid #2a2a2a'
+              }}>
+                <div style={{ width: '130px', color: '#e2e8f0', fontSize: '14px', fontWeight: 'bold' }}>
+                  {formatDate(item.date)}
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '220px' }}>
+                  <span style={{ fontSize: '20px', lineHeight: '1' }}>{getFlagEmoji(item.country)}</span>
+                  <span style={{ color: isUkraine ? '#bae6fd' : '#f8fafc', fontSize: '14px', fontWeight: isUkraine ? 'bold' : '500' }}>
+                    {getCountryName(item.country)}
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: typeInfo.color, width: '180px', backgroundColor: typeInfo.bg, padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
+                  {typeInfo.icon}
+                  <span>{typeInfo.label}</span>
+                </div>
+                
+                {item.note && <div style={{ color: '#64748b', fontSize: '13px', fontStyle: 'italic', flex: 1 }}>{item.note}</div>}
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
+      
     </div>
   );
 }
 
-// --- 5. Вкладка Джерела (Лінки) ---
+// --- 5. Вкладка Джерела (Посилання) ---
 export function TabSources({ tmdbData }) {
   if (!tmdbData?.external_links) return <p style={styles.emptyText}>Немає посилань.</p>;
 
   const links = tmdbData.external_links;
+  
   const sourceGroups = [
-    { title: 'Офіційні', icon: <Globe size={20} color="#38bdf8" />, items: [{ label: 'Сайт', url: links.homepage, icon: <LinkIcon size={18} /> }] },
+    { title: 'Офіційні ресурси', icon: <Globe size={20} color="#38bdf8" />, items: [{ label: 'Офіційний сайт', url: links.homepage, icon: <LinkIcon size={18} /> }] },
     { title: 'Бази даних', icon: <Database size={20} color="#facc15" />, items: [{ label: 'TMDB', url: links.tmdb, icon: <Tv size={18} /> }, { label: 'IMDb', url: links.imdb, icon: <ExternalLink size={18} /> }, { label: 'Wikidata', url: links.wikidata, icon: <ExternalLink size={18} /> }] },
-    { title: 'Соцмережі', icon: <ExternalLink size={20} color="#2ecc71" />, items: [{ label: 'Instagram', url: links.instagram, icon: <ExternalLink size={18} /> }, { label: 'Twitter (X)', url: links.twitter, icon: <ExternalLink size={18} /> }, { label: 'Facebook', url: links.facebook, icon: <ExternalLink size={18} /> }] }
+    { title: 'Соціальні мережі', icon: <ExternalLink size={20} color="#2ecc71" />, items: [{ label: 'Instagram', url: links.instagram, icon: <ExternalLink size={18} /> }, { label: 'Twitter (X)', url: links.twitter, icon: <ExternalLink size={18} /> }, { label: 'Facebook', url: links.facebook, icon: <ExternalLink size={18} /> }] }
   ];
 
   return (
@@ -673,6 +712,8 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLogId, setEditingLogId] = useState(null);
   const [formData, setFormData] = useState({ start_date: '', finish_date: '', rating: '' });
+  
+  const isSingleDate = viewType === 'movie' || viewType === 'episode';
 
   const formatDateStr = (dateString) => {
     if (!dateString) return null;
@@ -681,11 +722,11 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const payload = { 
-       start_date: formData.start_date || null, 
-       finish_date: formData.finish_date || null, 
-       rating: formData.rating === '' ? null : parseFloat(formData.rating) 
-     };
+    const payload = {
+        start_date: formData.start_date || null,
+        finish_date: formData.finish_date || null,
+        rating: formData.rating === '' ? null : parseFloat(formData.rating)
+      };
     if (editingLogId) onUpdate(editingLogId, payload);
     else onCreate(payload);
     setIsModalOpen(false);
@@ -694,16 +735,19 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 style={styles.sectionTitle} className="mb-0">Журнал переглядів</h3>
+        <h3 style={styles.sectionTitle} className="mb-0">Історія переглядів</h3>
         <button onClick={() => {
-            setEditingLogId(null); setFormData({ start_date: getLocalDateString(), finish_date: getLocalDateString(), rating: '' }); setIsModalOpen(true);
+            setEditingLogId(null); 
+            const today = getLocalDateString();
+            setFormData({ start_date: today, finish_date: today, rating: '' }); 
+            setIsModalOpen(true);
         }} style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid #38bdf8', color: '#38bdf8', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 'bold' }}>
           <Plus size={16} /> Додати
         </button>
       </div>
 
       {(!logs || logs.length === 0) ? (
-        <p style={styles.emptyText}>Ви ще не відмічали перегляд.</p>
+        <p style={styles.emptyText}>Історія порожня.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
           {logs.map((log, index) => {
@@ -715,7 +759,7 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
                     return (
                         <div key={log.id} style={{ padding: '12px', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderLeft: '3px solid #38bdf8', borderRadius: '4px', fontSize: '14px', color: '#94a3b8' }}>
                             <Star size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'text-top' }} color="#38bdf8" /> 
-                            Серію переглянуто протягом сезону: <span style={{ color: '#fff', fontWeight: 'bold' }}>{start} - {finish}</span>
+                            Сезон переглянуто: <span style={{ color: '#fff', fontWeight: 'bold' }}>{start} - {finish}</span>
                         </div>
                     );
                 }
@@ -723,7 +767,7 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
             }
 
             let dateText = 'Невідома дата';
-            if (start && finish) dateText = start === finish ? `Переглянуто: ${start}` : `Протягом: ${start} - ${finish}`;
+            if (start && finish) dateText = start === finish ? `Переглянуто: ${start}` : `Перегляд: ${start} - ${finish}`;
             else if (start) dateText = `Почато: ${start}`;
             else if (finish) dateText = `Завершено: ${finish}`;
 
@@ -744,7 +788,7 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
                       <Star size={14} color={log.rating !== null && log.rating !== undefined ? "#facc15" : "#555"} fill={log.rating !== null && log.rating !== undefined ? "#facc15" : "none"} />
                       <span style={{ color: log.rating !== null && log.rating !== undefined ? '#facc15' : '#555', fontSize: '14px', fontWeight: '500' }}>
-                        {log.rating !== null && log.rating !== undefined ? `${log.rating} / 5` : 'Не оцінено'}
+                        {log.rating !== null && log.rating !== undefined ? `${log.rating} / 5` : 'Без оцінки'}
                       </span>
                     </div>
                   </div>
@@ -752,7 +796,15 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
                 
                 {!isChildLog && (
                     <div style={{ display: 'flex', gap: '10px' }}>
-                      <button onClick={() => { setEditingLogId(log.id); setFormData({ start_date: log.start_date || '', finish_date: log.finish_date || '', rating: log.rating !== null ? log.rating : '' }); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#a3a3a3' }}><Pen size={18} /></button>
+                      <button onClick={() => { 
+                          setEditingLogId(log.id); 
+                          setFormData({ 
+                              start_date: log.start_date || '', 
+                              finish_date: log.finish_date || (isSingleDate ? log.start_date || '' : ''), 
+                              rating: log.rating !== null ? log.rating : '' 
+                          }); 
+                          setIsModalOpen(true); 
+                      }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#a3a3a3' }}><Pen size={18} /></button>
                       <button onClick={() => onDelete(log.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#ef4444' }}><Trash2 size={18} /></button>
                     </div>
                 )}
@@ -765,16 +817,32 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: '#1e293b', padding: '25px', borderRadius: '12px', width: '100%', maxWidth: '400px', border: '1px solid #334155' }}>
-            <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '20px' }}>{editingLogId ? 'Редагувати запис' : 'Новий запис'}</h3>
+            <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '20px' }}>{editingLogId ? 'Редагувати запис' : 'Додати запис'}</h3>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Початок</label>
-                <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Кінець</label>
-                <input type="date" value={formData.finish_date} onChange={e => setFormData({...formData, finish_date: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
-              </div>
+              
+              {isSingleDate ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <label style={{ color: '#94a3b8', fontSize: '13px' }}>Дата перегляду</label>
+                  <input 
+                    type="date" 
+                    value={formData.finish_date} 
+                    onChange={e => setFormData({...formData, start_date: e.target.value, finish_date: e.target.value})} 
+                    style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} 
+                  />
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <label style={{ color: '#94a3b8', fontSize: '13px' }}>Початок</label>
+                    <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <label style={{ color: '#94a3b8', fontSize: '13px' }}>Кінець</label>
+                    <input type="date" value={formData.finish_date} onChange={e => setFormData({...formData, finish_date: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
+                  </div>
+                </>
+              )}
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ color: '#94a3b8', fontSize: '13px' }}>Оцінка (0 - 5)</label>
                 <input type="number" step="0.5" min="0" max="5" value={formData.rating} onChange={e => setFormData({...formData, rating: e.target.value})} style={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#fff', padding: '10px', borderRadius: '8px', outline: 'none' }} />
@@ -795,7 +863,7 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
 export function TabSeasons({ tmdbData, media }) {
   const navigate = useNavigate();
 
-  if (!tmdbData?.seasons || tmdbData.seasons.length === 0) return <p style={styles.emptyText}>Немає інформації про сезони.</p>;
+  if (!tmdbData?.seasons || tmdbData.seasons.length === 0) return <p style={styles.emptyText}>Немає даних про сезони.</p>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -809,36 +877,35 @@ export function TabSeasons({ tmdbData, media }) {
           }}
           onClick={() => navigate(`/media/${media.media_type}/${tmdbData.tmdb_id}/season/${season.season_number}`)}
           onMouseEnter={(e) => { 
-            e.currentTarget.style.backgroundColor = '#2a2a2a'; 
-            e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+             e.currentTarget.style.backgroundColor = '#2a2a2a'; 
+             e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.4)';
             e.currentTarget.style.transform = 'translateX(5px)'; 
-          }}
+           }}
           onMouseLeave={(e) => { 
-            e.currentTarget.style.backgroundColor = '#1a1a1a';
+             e.currentTarget.style.backgroundColor = '#1a1a1a';
             e.currentTarget.style.borderColor = '#2a2a2a'; 
-            e.currentTarget.style.transform = 'translateX(0)'; 
-          }}
+             e.currentTarget.style.transform = 'translateX(0)'; 
+           }}
         >
           <img
-            src={season.poster_path || 'https://via.placeholder.com/120x180?text=No+Poster'}
+            src={season.poster_path ? `https://image.tmdb.org/t/p/w500${season.poster_path}` : 'https://via.placeholder.com/120x180?text=No+Poster'}
             alt={season.name}
             style={{ width: '120px', height: '180px', objectFit: 'cover', borderRadius: '8px', backgroundColor: '#334155', flexShrink: 0 }}
           />
           
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#f8fafc', fontSize: '20px', fontWeight: 'bold' }}>
-              {season.season_number === 0 && !season.name.toLowerCase().includes('спец') ? 'Спеціальні випуски' : season.name}
+              {season.season_number === 0 && !season.name.toLowerCase().includes('спец') ? 'Спеціальні епізоди' : season.name}
             </h3>
             
             <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', backgroundColor: 'rgba(56, 189, 248, 0.1)', padding: '4px 10px', borderRadius: '8px', color: '#38bdf8', fontSize: '13px', fontWeight: 'bold' }}>
-                {season.episode_count} серій
+                {season.episode_count} епізодів
               </span>
               
               {season.air_date && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: 'rgba(255, 255, 255, 0.05)', padding: '4px 10px', borderRadius: '8px', color: '#94a3b8', fontSize: '13px' }}>
-                  <Calendar size={14} />
-                  Прем'єра: {new Date(season.air_date).toLocaleDateString('uk-UA')}
+                  <Calendar size={14} /> Прем'єра: {new Date(season.air_date).toLocaleDateString('uk-UA')}
                 </span>
               )}
             </div>
@@ -851,7 +918,6 @@ export function TabSeasons({ tmdbData, media }) {
               <p style={{ margin: 0, color: '#64748b', fontSize: '14px', fontStyle: 'italic' }}>Опис відсутній.</p>
             )}
           </div>
-
           <div style={{ padding: '0 5px', color: '#64748b', alignSelf: 'center' }}>
             <ChevronRight size={24} />
           </div>
