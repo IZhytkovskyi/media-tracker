@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ChevronDown, Globe, Database, ExternalLink, Link as LinkIcon, Tv, 
   Trash2, Calendar, Star, Pen, Plus, X, ChevronLeft, ChevronRight,
-  Popcorn, Disc, MonitorPlay, Video, Filter, User
+  Popcorn, Disc, MonitorPlay, Video, Filter, User, Award
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { styles } from '../styles/mediaDetailStyles';
@@ -171,7 +171,7 @@ const scrollBtnStyle = {
 
 
 // --- 1. Вкладка "Інфо" (Головна) ---
-export function TabMain({ media, tmdbData }) {
+export function TabMain({ media, tmdbData, omdbData }) {
   const navigate = useNavigate();
   const releaseYear = media.release_date ? media.release_date.split('-')[0] : '';
   
@@ -243,6 +243,49 @@ export function TabMain({ media, tmdbData }) {
   const hasTheatrical = !!worldTheatricalPremiere;
   const isSameDate = hasFestival && hasTheatrical && festivalPremiere.rawDate === worldTheatricalPremiere;
 
+  // Оцінки з OMDb
+  const renderRatings = () => {
+    if (!omdbData || !omdbData.Ratings || omdbData.Ratings.length === 0) return null;
+
+    return (
+      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '20px' }}>
+        {omdbData.Ratings.map((rating, idx) => {
+          let bgColor = '#1e293b';
+          let textColor = '#fff';
+          let borderColor = '#334155';
+          let label = rating.Source;
+
+          if (rating.Source === 'Internet Movie Database') {
+            bgColor = '#f5c518';
+            textColor = '#000';
+            borderColor = '#f5c518';
+            label = 'IMDb';
+          } else if (rating.Source === 'Rotten Tomatoes') {
+            bgColor = '#fa320a';
+            textColor = '#fff';
+            borderColor = '#fa320a';
+          } else if (rating.Source === 'Metacritic') {
+            bgColor = '#61c700'; // зелений для хороших оцінок (за замовчуванням)
+            textColor = '#fff';
+            borderColor = '#61c700';
+          }
+
+          return (
+            <div key={idx} style={{ 
+              display: 'flex', alignItems: 'center', gap: '8px', 
+              backgroundColor: bgColor, color: textColor, 
+              padding: '6px 12px', borderRadius: '8px', 
+              border: `1px solid ${borderColor}`, fontWeight: 'bold', fontSize: '14px' 
+            }}>
+              <span>{label}:</span>
+              <span>{rating.Value}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <>
       <div style={styles.headerBlock}>
@@ -250,6 +293,17 @@ export function TabMain({ media, tmdbData }) {
         {media.original_title && <h2 style={styles.originalTitle}>{media.original_title}</h2>}
         {tmdbData?.tagline && <p style={styles.tagline}>"{tmdbData.tagline}"</p>}
       </div>
+
+      {/* Рейтинги OMDb */}
+      {renderRatings()}
+
+      {/* Нагороди OMDb */}
+      {omdbData?.Awards && omdbData.Awards !== 'N/A' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'rgba(250, 204, 21, 0.1)', border: '1px solid rgba(250, 204, 21, 0.3)', padding: '12px 16px', borderRadius: '12px', marginBottom: '20px', color: '#facc15' }}>
+          <Award size={20} />
+          <span style={{ fontSize: '14px', fontWeight: '500' }}>{omdbData.Awards}</span>
+        </div>
+      )}
 
       <div style={styles.detailsBox}>
         <InfoRow label="Країна:" value={tmdbData?.production_countries?.map(getCountryName).join(', ')} />
@@ -843,8 +897,8 @@ export function TabHistory({ logs, viewType, onDelete, onCreate, onUpdate }) {
 
             let dateText = 'Без дати';
             if (start && finish) dateText = start === finish ? `Дата: ${start}` : `Період: ${start} - ${finish}`;
-            else if (start) dateText = `Почато: ${start}`;
-            else if (finish) dateText = `Завершено: ${finish}`;
+            else if (start) dateText = `Початок: ${start}`;
+            else if (finish) dateText = `Завершення: ${finish}`;
 
             const isChildLog = (viewType === 'series' && log.media_type !== 'series') || (viewType === 'season' && log.media_type === 'episode');
 

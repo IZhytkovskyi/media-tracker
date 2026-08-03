@@ -1,27 +1,30 @@
 // frontend/src/pages/Home.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Film, Tv, Star, Plus, Trash2, X, CalendarCheck, LayoutGrid, Home as HomeIcon, Clock, Activity, List, Pen, ArrowLeft, MinusCircle } from 'lucide-react';
+import { Search, Film, Tv, Plus, X, CalendarCheck, LayoutGrid, Home as HomeIcon, Clock, Activity, List, Pen, ArrowLeft, Calendar } from 'lucide-react';
 import { MediaGlobalStyles } from '../styles/mediaDetailStyles';
+import MediaCard from '../components/MediaCard';
+import { api } from '../utils/api';
+import { useToast } from '../components/ToastContext';
 
 export default function Home() {
   const navigate = useNavigate();
+  const { success, error } = useToast();
+  
   const [activeTab, setActiveTab] = useState('dashboard');
   const [mediaList, setMediaList] = useState([]);
+  const [upcomingMedia, setUpcomingMedia] = useState([]);
   const [customLists, setCustomLists] = useState([]);
-  
   const [activeListView, setActiveListView] = useState(null);
   const [listMedia, setListMedia] = useState([]);
-
   const [loading, setLoading] = useState(false);
+  
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  
   const [isListSearchOpen, setIsListSearchOpen] = useState(false);
-  
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
-
+  
   const [isListModalOpen, setIsListModalOpen] = useState(false);
   const [editingListId, setEditingListId] = useState(null);
   const [listFormData, setListFormData] = useState({ name: '', description: '' });
@@ -29,23 +32,20 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      let url = '/api/media';
-      if (activeTab !== 'all' && activeTab !== 'dashboard' && activeTab !== 'lists') {
-        url += `?type=${activeTab}`;
-      }
+      let params = '';
+      if (activeTab !== 'all' && activeTab !== 'dashboard' && activeTab !== 'lists') params = `?type=${activeTab}`;
       
-      const [mediaRes, listsRes] = await Promise.all([
-        fetch(url),
-        fetch('/api/lists')
+      const [mediaRes, listsRes, upcomingRes] = await Promise.all([
+        api.getMedia(params),
+        api.getLists(),
+        api.getUpcoming()
       ]);
 
-      const mediaJson = await mediaRes.json();
-      const listsJson = await listsRes.json();
-
-      if (mediaJson.data) setMediaList(mediaJson.data);
-      if (listsJson.data) setCustomLists(listsJson.data);
+      setMediaList(mediaRes.data || []);
+      setCustomLists(listsRes.data || []);
+      setUpcomingMedia(upcomingRes.data || []);
     } catch (err) {
-      console.error('Помилка завантаження даних:', err);
+      error(err.message);
     } finally {
       setLoading(false);
     }
@@ -54,11 +54,10 @@ export default function Home() {
   const fetchListItems = async (listId) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/lists/${listId}/items`);
-      const json = await res.json();
-      if (json.data) setListMedia(json.data);
+      const res = await api.getListItems(listId);
+      setListMedia(res.data || []);
     } catch (err) {
-      console.error(err);
+      error(err.message);
     } finally {
       setLoading(false);
     }
@@ -80,99 +79,89 @@ export default function Home() {
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
-      const res = await fetch(`/api/external/tmdb/search?query=${encodeURIComponent(searchQuery)}`);
-      const json = await res.json();
-      if (json.data) setSearchResults(json.data);
+      const res = await api.searchTMDB(searchQuery);
+      setSearchResults(res.data || []);
     } catch (err) {
-      console.error('Помилка пошуку TMDB:', err);
+      error(err.message);
     } finally {
       setSearching(false);
     }
   };
 
-  const handleSearchResultClick = (result) => {
-    setIsSearchOpen(false);
-    navigate(`/media/${result.media_type}/${result.tmdb_id}`);
-  };
-
   const handleAddToListFromSearch = async (result) => {
     if (!activeListView) return;
-
     try {
       const extId = `${result.media_type === 'series' ? 'tv' : 'movie'}_${result.tmdb_id}`;
       let mediaId = null;
 
-      const checkRes = await fetch(`/api/media/external/${extId}`);
-      if (checkRes.ok) {
-        const checkJson = await checkRes.json();
-        if (checkJson.data) mediaId = checkJson.data.id;
+      try {
+        const checkRes = await api.getMediaByExternalId(extId);
+        mediaId = checkRes.data.id;
+      } catch (e) {
+        const createRes = await api.createMedia({
+          title: result.title,
+          media_type: result.media_type,
+          external_id: extId,
+          tmdb_id: result.tmdb_id,
+          poster_path: result.poster_path ? result.poster_path.replace('https://image.tmdb.org/t/p/w500', '') : null,
+          release_date: result.release_date
+        });
+        mediaId = createRes.data.id;
       }
 
-      if (!mediaId) {
-        const createRes = await fetch('/api/media', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: result.title,
-            media_type: result.media_type,
-            external_id: extId,
-            tmdb_id: result.tmdb_id,
-            poster_path: result.poster_path ? result.poster_path.replace('https://image.tmdb.org/t/p/w500', '') : null,
-            release_date: result.release_date
-          })
-        });
-        const createJson = await createRes.json();
-        if (createJson.data) mediaId = createJson.data.id;
-      }
-
-      if (mediaId) {
-        await fetch(`/api/lists/${activeListView}/items`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ media_id: mediaId })
-        });
-        fetchListItems(activeListView);
-        setIsListSearchOpen(false);
-        setSearchQuery('');
-        setSearchResults([]);
-      }
-    } catch (e) {
-      console.error("Помилка додавання до списку:", e);
+      await api.addToList(activeListView, mediaId);
+      success('Додано до списку');
+      fetchListItems(activeListView);
+      setIsListSearchOpen(false);
+      setSearchQuery('');
+      setSearchResults([]);
+    } catch (err) {
+      error(err.message);
     }
   };
 
-  const handleUpdateItem = async (e, id, updates) => {
-    e.stopPropagation(); 
+  const handleUpdateStatus = async (id, status) => {
     try {
-      const res = await fetch(`/api/media/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
-      if (res.ok) fetchData();
-    } catch (err) {}
+      await api.updateMedia(id, { status });
+      fetchData();
+      success('Статус оновлено');
+    } catch (err) { error(err.message); }
   };
 
-  const handleDeleteItem = async (e, id) => {
-    e.stopPropagation();
-    if (!confirm('Дійсно видалити цей запис повністю з бази даних?')) return;
+  const handleUpdateRating = async (id, ratingVal) => {
+    const rating = parseFloat(ratingVal) || null;
     try {
-      const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchData();
-        if (activeListView && activeListView !== 'planned') fetchListItems(activeListView);
-      }
-    } catch (err) {}
+      await api.updateMedia(id, { rating });
+      fetchData();
+      success('Оцінку збережено');
+    } catch (err) { error(err.message); }
   };
 
-  const handleRemoveFromList = async (e, mediaId) => {
-    e.stopPropagation();
+  const handleDeleteItem = async (id) => {
+    if (!confirm('Видалити цей елемент?')) return;
+    try {
+      await api.deleteMedia(id);
+      success('Видалено');
+      fetchData();
+      if (activeListView && activeListView !== 'planned') fetchListItems(activeListView);
+    } catch (err) { error(err.message); }
+  };
+
+  const handleRemoveFromList = async (mediaId) => {
     if (!activeListView || activeListView === 'planned') return;
-    
     try {
-      await fetch(`/api/lists/${activeListView}/items/${mediaId}`, { method: 'DELETE' });
+      await api.removeFromList(activeListView, mediaId);
+      success('Вилучено зі списку');
       fetchListItems(activeListView);
-    } catch (err) {}
+    } catch (err) { error(err.message); }
+  };
+
+  const handleMarkNextEpisode = async (seriesId) => {
+    try {
+        await api.watchNextEpisode(seriesId);
+        success('Серію відмічено як переглянуту!');
+        fetchData();
+    } catch (err) { error(err.message); }
   };
 
   const openListModal = (list = null) => {
@@ -189,131 +178,67 @@ export default function Home() {
   const submitListForm = async (e) => {
     e.preventDefault();
     if (!listFormData.name.trim()) return;
-
     try {
-      const method = editingListId ? 'PATCH' : 'POST';
-      const url = editingListId ? `/api/lists/${editingListId}` : '/api/lists';
-      
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(listFormData)
-      });
-      
-      if (res.ok) {
-        setIsListModalOpen(false);
-        fetchData();
+      if (editingListId) {
+        await api.updateList(editingListId, listFormData);
+        success('Список оновлено');
+      } else {
+        await api.createList(listFormData);
+        success('Список створено');
       }
-    } catch (err) {
-      console.error('Помилка збереження списку:', err);
-    }
+      setIsListModalOpen(false);
+      fetchData();
+    } catch (err) { error(err.message); }
   };
 
   const handleDeleteList = async (e, id) => {
     e.stopPropagation();
-    if (!confirm('Дійсно видалити цей список? (Усі медіа всередині залишаться у вашій базі)')) return;
+    if (!confirm('Видалити цей список?')) return;
     try {
-      const res = await fetch(`/api/lists/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchData();
-    } catch (err) {}
+      await api.deleteList(id);
+      success('Список видалено');
+      fetchData();
+    } catch (err) { error(err.message); }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('uk-UA');
+  const handleCardClick = (item) => {
+    if (item.media_type === 'episode') {
+      const sId = item.series_tmdb_id || item.tmdb_id;
+      navigate(`/media/series/${sId}/season/${item.season}/episode/${item.episode}`);
+    } else if (item.media_type === 'season') {
+      const sId = item.series_tmdb_id || item.tmdb_id;
+      navigate(`/media/series/${sId}/season/${item.season}`);
+    } else {
+      navigate(`/media/${item.media_type}/${item.tmdb_id}`);
+    }
   };
 
-  const currentlyWatching = mediaList.filter(m => m.status === 'watching');
-  const recentlyCompleted = mediaList
-    .filter(m => m.status === 'completed')
-    .sort((a, b) => new Date(b.finish_date || 0) - new Date(a.finish_date || 0))
-    .slice(0, 8);
+  const currentlyWatching = mediaList.filter(m => m.status === 'watching' && !['season', 'episode'].includes(m.media_type));
+  const recentlyCompleted = mediaList.filter(m => m.status === 'completed').sort((a, b) => new Date(b.finish_date || 0) - new Date(a.finish_date || 0)).slice(0, 10);
   const plannedItems = mediaList.filter(m => m.status === 'planned');
 
-  const renderMediaGrid = (items, isInsideList = false) => (
+  const renderGrid = (items, options = {}) => (
     <div className="home-grid">
       {items.map(item => {
-        const posterUrl = item.poster_path 
-          ? (item.poster_path.startsWith('http') ? item.poster_path : `https://image.tmdb.org/t/p/w500${item.poster_path}`)
-          : null;
+        const isSeriesType = ['series', 'season', 'episode'].includes(item.media_type);
+        return <MediaCard key={item.id} item={item} options={{ ...options, isWide: isSeriesType }} onCardClick={handleCardClick} onUpdateStatus={handleUpdateStatus} onUpdateRating={handleUpdateRating} onDelete={handleDeleteItem} onRemoveFromList={handleRemoveFromList} onMarkNextEpisode={handleMarkNextEpisode} />
+      })}
+    </div>
+  );
 
-        const year = item.release_date ? item.release_date.split('-')[0] : null;
-        const seasons = item.media_type === 'series' && item.total_seasons ? `${item.total_seasons} сезонів` : null;
-        const subtitleText = [year, seasons].filter(Boolean).join(' • ') || 'Невідомо';
+  const renderWatchingGrid = (items, options = {}) => (
+    <div className="home-grid">
+      {items.map(item => <MediaCard key={item.id} item={item} options={{ ...options, isWatching: true, isWide: true }} onCardClick={handleCardClick} onUpdateStatus={handleUpdateStatus} onUpdateRating={handleUpdateRating} onDelete={handleDeleteItem} onRemoveFromList={handleRemoveFromList} onMarkNextEpisode={handleMarkNextEpisode} />)}
+    </div>
+  );
 
+  const renderHorizontalScroll = (items, options = {}) => (
+    <div className="home-horizontal-scroll custom-scroll">
+      {items.map(item => {
+        const isSeriesType = ['series', 'season', 'episode'].includes(item.media_type);
         return (
-          <div 
-            key={item.id} 
-            className="home-media-card"
-            onClick={() => navigate(`/media/${item.media_type}/${item.tmdb_id}`)}
-          >
-            <div className="home-poster-wrapper">
-              {posterUrl ? (
-                <img src={posterUrl} alt={item.title} className="home-poster" loading="lazy" />
-              ) : (
-                <div className="home-no-poster">Немає постера</div>
-              )}
-              <div className="home-type-badge">
-                {item.media_type === 'movie' ? <Film size={14} /> : <Tv size={14} />}
-              </div>
-              
-              {isInsideList && activeListView !== 'planned' && (
-                <button 
-                  className="remove-from-list-btn" 
-                  title="Прибрати зі списку"
-                  onClick={(e) => handleRemoveFromList(e, item.id)}
-                >
-                  <MinusCircle size={18} />
-                </button>
-              )}
-            </div>
-            
-            <div className="home-card-content">
-              <div className="home-card-header">
-                <h3 className="home-title" title={item.title}>{item.title}</h3>
-                {item.status === 'completed' && item.finish_date ? (
-                  <p className="home-date-text"><CalendarCheck size={12} style={{marginRight: '4px'}}/>{formatDate(item.finish_date)}</p>
-                ) : (
-                  <p className="home-subtitle">{subtitleText}</p>
-                )}
-              </div>
-              
-              <div className="home-card-actions">
-                <select 
-                  value={item.status || ''} 
-                  onChange={(e) => handleUpdateItem(e, item.id, { status: e.target.value || null })}
-                  onClick={(e) => e.stopPropagation()}
-                  className="home-status-select"
-                >
-                  <option value="">Не вибрано</option>
-                  <option value="planned">У планах</option>
-                  <option value="watching">Переглядаю</option>
-                  <option value="completed">Переглянуто</option>
-                  <option value="on_hold">Відкладено</option>
-                  <option value="dropped">Покинуто</option>
-                </select>
-
-                <div className="home-bottom-actions">
-                  <div className="home-rating-row" onClick={(e) => e.stopPropagation()}>
-                    <Star size={16} color={item.rating ? "#facc15" : "#475569"} fill={item.rating ? "#facc15" : "none"} />
-                    <input 
-                      type="number" min="0" max="5" step="0.5"
-                      value={item.rating || ''} 
-                      placeholder="-"
-                      onChange={(e) => handleUpdateItem(e, item.id, { rating: parseFloat(e.target.value) || null })}
-                      className="home-rating-input"
-                    />
-                  </div>
-                  <button 
-                    className="home-delete-btn"
-                    onClick={(e) => handleDeleteItem(e, item.id)} 
-                    title="Видалити повністю з БД"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div key={item.id} className={isSeriesType ? 'scroll-item-wide' : 'scroll-item-narrow'}>
+            <MediaCard item={item} options={{ ...options, isWide: isSeriesType }} onCardClick={handleCardClick} onUpdateStatus={handleUpdateStatus} onUpdateRating={handleUpdateRating} onDelete={handleDeleteItem} onRemoveFromList={handleRemoveFromList} onMarkNextEpisode={handleMarkNextEpisode} />
           </div>
         );
       })}
@@ -323,92 +248,56 @@ export default function Home() {
   return (
     <div className="home-container">
       <MediaGlobalStyles dominantColor="56, 189, 248" />
-
       <header className="home-header">
-        <h1 className="home-logo">
-          <LayoutGrid size={28} color="#38bdf8" />
-          Media Tracker
-        </h1>
+        <h1 className="home-logo"><LayoutGrid size={28} color="#38bdf8" /> Media Tracker</h1>
         {activeTab !== 'lists' || activeListView === null ? (
-            <button className="home-add-btn" onClick={() => setIsSearchOpen(true)}>
-              <Plus size={18} /> Пошук
-            </button>
+            <button className="home-add-btn" onClick={() => setIsSearchOpen(true)}><Plus size={18} /> Додати</button>
         ) : null}
       </header>
 
       <div className="main-tabs-wrapper" style={{ display: 'flex', justifyContent: 'center', width: '100%', marginBottom: '40px' }}>
         <div className="main-tabs-container custom-scroll">
-          <button className={`main-tab ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-            <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}><HomeIcon size={16} /> Головна</span>
-          </button>
-          <button className={`main-tab ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>Усе медіа</button>
-          <button className={`main-tab ${activeTab === 'movie' ? 'active' : ''}`} onClick={() => setActiveTab('movie')}>
-            <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}><Film size={16} /> Фільми</span>
-          </button>
-          <button className={`main-tab ${activeTab === 'series' ? 'active' : ''}`} onClick={() => setActiveTab('series')}>
-            <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}><Tv size={16} /> Серіали</span>
-          </button>
-          <button className={`main-tab ${activeTab === 'lists' ? 'active' : ''}`} onClick={() => setActiveTab('lists')}>
-            <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}><List size={16} /> Списки</span>
-          </button>
+          <button className={`main-tab ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}><span style={{display: 'flex', alignItems: 'center', gap: '6px'}}><HomeIcon size={16} /> Дашборд</span></button>
+          <button className={`main-tab ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>Усе</button>
+          <button className={`main-tab ${activeTab === 'movie' ? 'active' : ''}`} onClick={() => setActiveTab('movie')}><span style={{display: 'flex', alignItems: 'center', gap: '6px'}}><Film size={16} /> Фільми</span></button>
+          <button className={`main-tab ${activeTab === 'series' ? 'active' : ''}`} onClick={() => setActiveTab('series')}><span style={{display: 'flex', alignItems: 'center', gap: '6px'}}><Tv size={16} /> Серіали</span></button>
+          <button className={`main-tab ${activeTab === 'lists' ? 'active' : ''}`} onClick={() => setActiveTab('lists')}><span style={{display: 'flex', alignItems: 'center', gap: '6px'}}><List size={16} /> Списки</span></button>
         </div>
       </div>
 
       <main>
         {loading ? (
-          <div className="home-loading-state">
-            <div className="home-spinner"></div>
-            <p>Завантаження...</p>
-          </div>
+          <div className="home-loading-state"><div className="home-spinner"></div><p>Завантаження...</p></div>
         ) : activeTab === 'lists' ? (
-          
-          activeListView ? (
+           activeListView ? (
              <div className="home-section">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                   <div>
-                    <button 
-                      className="home-add-btn" 
-                      style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', marginBottom: '16px', padding: '6px 12px' }} 
-                      onClick={() => setActiveListView(null)}
-                    >
-                      <ArrowLeft size={16} /> Назад до списків
+                    <button className="home-add-btn" style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', marginBottom: '16px', padding: '6px 12px' }} onClick={() => setActiveListView(null)}>
+                      <ArrowLeft size={16} /> Назад
                     </button>
                     <h2 className="home-section-title" style={{ borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }}>
                       {activeListView === 'planned' ? 'У планах' : customLists.find(l => l.id === activeListView)?.name}
                     </h2>
                     {activeListView !== 'planned' && customLists.find(l => l.id === activeListView)?.description && (
-                      <p style={{ color: '#94a3b8', marginTop: '8px', fontSize: '14px' }}>
-                        {customLists.find(l => l.id === activeListView)?.description}
-                      </p>
+                      <p style={{ color: '#94a3b8', marginTop: '8px', fontSize: '14px' }}>{customLists.find(l => l.id === activeListView)?.description}</p>
                     )}
                   </div>
-                  
                   {activeListView !== 'planned' && (
-                    <button className="home-add-btn" style={{ background: '#38bdf8', color: '#000', border: 'none' }} onClick={() => setIsListSearchOpen(true)}>
-                      <Plus size={18} /> Додати до списку
-                    </button>
+                    <button className="home-add-btn" style={{ background: '#38bdf8', color: '#000', border: 'none' }} onClick={() => setIsListSearchOpen(true)}><Plus size={18} /> Додати</button>
                   )}
                 </div>
-
                 {activeListView === 'planned' ? (
-                  plannedItems.length > 0 ? renderMediaGrid(plannedItems, true) : <p className="home-empty-text">Список порожній.</p>
+                  plannedItems.length > 0 ? renderGrid(plannedItems, { isInsideList: true }) : <p className="home-empty-text">Список порожній.</p>
                 ) : (
-                  listMedia.length > 0 ? renderMediaGrid(listMedia, true) : <p className="home-empty-text">Цей список поки що порожній. Додайте щось, щоб не забути!</p>
+                  listMedia.length > 0 ? renderGrid(listMedia, { isInsideList: true }) : <p className="home-empty-text">Список порожній!</p>
                 )}
              </div>
           ) : (
             <div className="home-section">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-                <h2 className="home-section-title" style={{ marginBottom: 0, borderBottom: 'none' }}>
-                  <List size={24} color="#38bdf8" /> Ваші списки
-                </h2>
-                <button 
-                  className="home-add-btn" 
-                  style={{ background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' }} 
-                  onClick={() => openListModal()}
-                >
-                  <Plus size={18} /> Створити список
-                </button>
+                <h2 className="home-section-title" style={{ marginBottom: 0, borderBottom: 'none' }}><List size={24} color="#38bdf8" /> Мої списки</h2>
+                <button className="home-add-btn" style={{ background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' }} onClick={() => openListModal()}><Plus size={18} /> Створити</button>
               </div>
 
               <div className="lists-grid">
@@ -416,10 +305,8 @@ export default function Home() {
                   <div className="list-icon"><CalendarCheck size={28} color="#facc15" /></div>
                   <div className="list-info">
                     <h3 className="list-name">У планах</h3>
-                    <p className="list-desc">Віртуальний список медіа, які ви маєте статус "planned".</p>
-                    <span className="list-count" style={{ color: '#facc15', background: 'rgba(250, 204, 21, 0.1)' }}>
-                      {plannedItems.length} елементів
-                    </span>
+                    <p className="list-desc">Системний список для елементів зі статусом "planned".</p>
+                    <span className="list-count" style={{ color: '#facc15', background: 'rgba(250, 204, 21, 0.1)' }}>{plannedItems.length} ел.</span>
                   </div>
                 </div>
 
@@ -429,7 +316,7 @@ export default function Home() {
                     <div className="list-info">
                       <h3 className="list-name">{list.name}</h3>
                       {list.description && <p className="list-desc">{list.description}</p>}
-                      <span className="list-count">{list.item_count} елементів</span>
+                      <span className="list-count">{list.item_count} ел.</span>
                     </div>
                     <div className="list-actions" onClick={e => e.stopPropagation()}>
                       <button onClick={() => openListModal(list)} title="Редагувати"><Pen size={16}/></button>
@@ -444,122 +331,90 @@ export default function Home() {
         ) : mediaList.length === 0 ? (
           <div className="home-empty-state">
             <Film size={48} color="#334155" style={{ marginBottom: '16px' }} />
-            <h2 style={{ color: '#fff', marginBottom: '10px' }}>Ваш список порожній</h2>
-            <p style={{ marginBottom: '20px' }}>Натисніть «Додати медіа», щоб знайти нові фільми чи серіали.</p>
-            <button className="home-add-btn" style={{ background: '#38bdf8', color: '#000' }} onClick={() => setIsSearchOpen(true)}>
-              <Search size={18} /> Знайти медіа
-            </button>
+            <h2 style={{ color: '#fff', marginBottom: '10px' }}>Немає доданих медіа</h2>
+            <button className="home-add-btn" style={{ background: '#38bdf8', color: '#000' }} onClick={() => setIsSearchOpen(true)}><Search size={18} /> Знайти</button>
           </div>
         ) : activeTab === 'dashboard' ? (
-          <div>
-            <div className="home-section">
-              <h2 className="home-section-title"><Activity size={20} color="#38bdf8" /> Зараз у процесі</h2>
-              {currentlyWatching.length > 0 ? renderMediaGrid(currentlyWatching) : <p className="home-empty-text">Ви зараз нічого не переглядаєте.</p>}
+          <div className="dashboard-layout">
+            <div className="home-section dashboard-block watching-block">
+              <div className="section-header">
+                <div className="icon-wrap bg-blue"><Activity size={20} color="#38bdf8" /></div>
+                <h2 className="home-section-title mb-0 border-0">Триває перегляд</h2>
+              </div>
+              {currentlyWatching.length > 0 ? renderWatchingGrid(currentlyWatching) : <p className="home-empty-text pl-14">Немає елементів у процесі перегляду.</p>}
             </div>
 
-            <div className="home-section">
-              <h2 className="home-section-title"><Clock size={20} color="#2ecc71" /> Нещодавно завершено</h2>
-              {recentlyCompleted.length > 0 ? renderMediaGrid(recentlyCompleted) : <p className="home-empty-text">Тут будуть відображатись ваші останні переглянуті медіа.</p>}
+            <div className="home-section dashboard-block upcoming-block">
+              <div className="section-header">
+                <div className="icon-wrap bg-orange"><Calendar size={20} color="#f97316" /></div>
+                <h2 className="home-section-title mb-0 border-0">Очікується незабаром</h2>
+              </div>
+              {upcomingMedia.length > 0 ? renderHorizontalScroll(upcomingMedia, { isComingSoon: true }) : <p className="home-empty-text pl-14">Немає майбутніх релізів.</p>}
+            </div>
+
+            <div className="home-section dashboard-block completed-block">
+              <div className="section-header">
+                <div className="icon-wrap bg-green"><Clock size={20} color="#2ecc71" /></div>
+                <h2 className="home-section-title mb-0 border-0">Нещодавно завершено</h2>
+              </div>
+              {recentlyCompleted.length > 0 ? renderHorizontalScroll(recentlyCompleted) : <p className="home-empty-text pl-14">Немає нещодавно завершених елементів.</p>}
             </div>
           </div>
         ) : (
-          renderMediaGrid(mediaList)
+          renderGrid(mediaList)
         )}
       </main>
 
-      {/* Модальне вікно редагування списку */}
+      {/* Модалки (Списки, Пошук) залишені без змін для UI */}
       {isListModalOpen && (
         <div className="home-modal-overlay" onClick={() => setIsListModalOpen(false)}>
           <div className="home-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
             <div className="home-modal-header">
               <h2 className="home-modal-title">{editingListId ? 'Редагувати список' : 'Новий список'}</h2>
-              <button className="home-close-btn" onClick={() => setIsListModalOpen(false)}>
-                <X size={24} />
-              </button>
+              <button className="home-close-btn" onClick={() => setIsListModalOpen(false)}><X size={24} /></button>
             </div>
-            
             <form onSubmit={submitListForm} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Назва списку *</label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="Наприклад: Топ фільмів на вечір" 
-                  value={listFormData.name} 
-                  onChange={(e) => setListFormData({...listFormData, name: e.target.value})} 
-                  className="home-search-input"
-                  autoFocus 
-                />
+                <label style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Назва *</label>
+                <input type="text" required placeholder="Мій топ фільмів" value={listFormData.name} onChange={(e) => setListFormData({...listFormData, name: e.target.value})} className="home-search-input" autoFocus />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Опис (необов'язково)</label>
-                <textarea 
-                  placeholder="Короткий опис цього списку..." 
-                  value={listFormData.description} 
-                  onChange={(e) => setListFormData({...listFormData, description: e.target.value})} 
-                  className="home-search-input"
-                  style={{ minHeight: '80px', resize: 'vertical' }}
-                />
+                <label style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Опис (опціонально)</label>
+                <textarea placeholder="Коротко про список..." value={listFormData.description} onChange={(e) => setListFormData({...listFormData, description: e.target.value})} className="home-search-input" style={{ minHeight: '80px', resize: 'vertical' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button type="button" className="home-search-submit-btn" style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8' }} onClick={() => setIsListModalOpen(false)}>
-                  Скасувати
-                </button>
-                <button type="submit" className="home-search-submit-btn" style={{ background: '#38bdf8', color: '#000' }}>
-                  Зберегти
-                </button>
+                <button type="button" className="home-search-submit-btn" style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8' }} onClick={() => setIsListModalOpen(false)}>Скасувати</button>
+                <button type="submit" className="home-search-submit-btn" style={{ background: '#38bdf8', color: '#000' }}>Зберегти</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Модальне вікно загального пошуку TMDB */}
       {isSearchOpen && (
         <div className="home-modal-overlay" onClick={() => setIsSearchOpen(false)}>
           <div className="home-modal" onClick={(e) => e.stopPropagation()}>
             <div className="home-modal-header">
-              <h2 className="home-modal-title">Пошук у базі TMDB</h2>
-              <button className="home-close-btn" onClick={() => setIsSearchOpen(false)}>
-                <X size={24} />
-              </button>
+              <h2 className="home-modal-title">Пошук TMDB</h2>
+              <button className="home-close-btn" onClick={() => setIsSearchOpen(false)}><X size={24} /></button>
             </div>
-            
             <form onSubmit={handleSearchTMDB} className="home-search-form">
               <div className="home-search-input-wrapper">
                 <Search size={20} color="#64748b" className="home-search-icon" />
-                <input 
-                  type="text" 
-                  placeholder="Введіть назву фільму чи серіалу..." 
-                  value={searchQuery} 
-                  onChange={(e) => setSearchQuery(e.target.value)} 
-                  className="home-search-input"
-                  autoFocus 
-                />
+                <input type="text" placeholder="Назва..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="home-search-input" autoFocus />
               </div>
-              <button type="submit" className="home-search-submit-btn" disabled={searching}>
-                {searching ? 'Шукаю...' : 'Знайти'}
-              </button>
+              <button type="submit" className="home-search-submit-btn" disabled={searching}>{searching ? 'Пошук...' : 'Знайти'}</button>
             </form>
-
             <div className="home-search-results custom-scroll">
-              {searchResults.length === 0 && !searching && searchQuery && (
-                <p style={{ textAlign: 'center', color: '#64748b', marginTop: '20px' }}>Нічого не знайдено.</p>
-              )}
+              {searchResults.length === 0 && !searching && searchQuery && <p style={{ textAlign: 'center', color: '#64748b', marginTop: '20px' }}>Нічого не знайдено.</p>}
               {searchResults.map(result => (
-                <div 
-                  key={result.tmdb_id} 
-                  className="home-search-item"
-                  onClick={() => handleSearchResultClick(result)}
-                >
-                  <img src={result.poster_path || 'https://via.placeholder.com/50x75?text=Немає'} alt={result.title} className="home-search-poster" loading="lazy" />
+                <div key={result.tmdb_id} className="home-search-item" onClick={() => { setIsSearchOpen(false); navigate(`/media/${result.media_type}/${result.tmdb_id}`); }}>
+                  <img src={result.poster_path || 'https://via.placeholder.com/50x75?text=No+Img'} alt={result.title} className="home-search-poster" loading="lazy" />
                   <div className="home-search-info">
                     <h4 className="home-search-title">{result.title}</h4>
                     <div className="home-search-meta">
-                      <span className="home-search-year">{result.release_date?.split('-')[0] || 'Рік невідомий'}</span>
-                      <span className="home-search-type-badge">
-                        {result.media_type === 'movie' ? 'Фільм' : 'Серіал'}
-                      </span>
+                      <span className="home-search-year">{result.release_date?.split('-')[0] || 'Невідомо'}</span>
+                      <span className="home-search-type-badge">{result.media_type === 'movie' ? 'Фільм' : 'Серіал'}</span>
                     </div>
                   </div>
                 </div>
@@ -569,57 +424,33 @@ export default function Home() {
         </div>
       )}
 
-      {/* Модальне вікно пошуку TMDB (ДЛЯ СПИСКІВ) */}
       {isListSearchOpen && (
         <div className="home-modal-overlay" onClick={() => setIsListSearchOpen(false)}>
           <div className="home-modal" onClick={(e) => e.stopPropagation()}>
             <div className="home-modal-header">
-              <h2 className="home-modal-title">Знайти та додати до списку</h2>
-              <button className="home-close-btn" onClick={() => setIsListSearchOpen(false)}>
-                <X size={24} />
-              </button>
+              <h2 className="home-modal-title">Додати до списку</h2>
+              <button className="home-close-btn" onClick={() => setIsListSearchOpen(false)}><X size={24} /></button>
             </div>
-            
             <form onSubmit={handleSearchTMDB} className="home-search-form">
               <div className="home-search-input-wrapper">
                 <Search size={20} color="#64748b" className="home-search-icon" />
-                <input 
-                  type="text" 
-                  placeholder="Що шукаємо?" 
-                  value={searchQuery} 
-                  onChange={(e) => setSearchQuery(e.target.value)} 
-                  className="home-search-input"
-                  autoFocus 
-                />
+                <input type="text" placeholder="Назва..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="home-search-input" autoFocus />
               </div>
-              <button type="submit" className="home-search-submit-btn" disabled={searching}>
-                {searching ? 'Шукаю...' : 'Шукати'}
-              </button>
+              <button type="submit" className="home-search-submit-btn" disabled={searching}>{searching ? 'Пошук...' : 'Знайти'}</button>
             </form>
-
             <div className="home-search-results custom-scroll">
-              {searchResults.length === 0 && !searching && searchQuery && (
-                <p style={{ textAlign: 'center', color: '#64748b', marginTop: '20px' }}>Нічого не знайдено.</p>
-              )}
+              {searchResults.length === 0 && !searching && searchQuery && <p style={{ textAlign: 'center', color: '#64748b', marginTop: '20px' }}>Нічого не знайдено.</p>}
               {searchResults.map(result => (
-                <div 
-                  key={result.tmdb_id} 
-                  className="home-search-item"
-                  onClick={() => handleAddToListFromSearch(result)}
-                >
-                  <img src={result.poster_path || 'https://via.placeholder.com/50x75?text=Немає'} alt={result.title} className="home-search-poster" loading="lazy" />
+                <div key={result.tmdb_id} className="home-search-item" onClick={() => handleAddToListFromSearch(result)}>
+                  <img src={result.poster_path || 'https://via.placeholder.com/50x75?text=No+Img'} alt={result.title} className="home-search-poster" loading="lazy" />
                   <div className="home-search-info">
                     <h4 className="home-search-title">{result.title}</h4>
                     <div className="home-search-meta">
-                      <span className="home-search-year">{result.release_date?.split('-')[0] || 'Рік невідомий'}</span>
-                      <span className="home-search-type-badge">
-                        {result.media_type === 'movie' ? 'Фільм' : 'Серіал'}
-                      </span>
+                      <span className="home-search-year">{result.release_date?.split('-')[0] || 'Невідомо'}</span>
+                      <span className="home-search-type-badge">{result.media_type === 'movie' ? 'Фільм' : 'Серіал'}</span>
                     </div>
                   </div>
-                  <div style={{ color: '#38bdf8', padding: '0 10px' }}>
-                     <Plus size={20} />
-                  </div>
+                  <div style={{ color: '#38bdf8', padding: '0 10px' }}><Plus size={20} /></div>
                 </div>
               ))}
             </div>
@@ -633,36 +464,46 @@ export default function Home() {
         .home-logo { font-size: 24px; margin: 0; color: #fff; display: flex; align-items: center; gap: 10px; font-weight: bold; }
         .home-add-btn { background: rgba(20, 20, 20, 0.85); border: 1px solid rgba(255,255,255,0.1); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 20px; font-size: 14px; font-weight: bold; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: all 0.2s ease; }
         .home-add-btn:hover { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: #38bdf8; transform: translateY(-2px); }
+        
         main { max-width: 1200px; margin: 0 auto; }
-        .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
-        .home-media-card { background-color: #1a1a1a; border-radius: 12px; border: 1px solid #2a2a2a; overflow: hidden; display: flex; flex-direction: column; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .home-media-card:hover { transform: translateY(-4px); border-color: var(--dominant-color-strong, #38bdf8); box-shadow: 0 10px 20px rgba(0,0,0,0.6); }
-        .home-poster-wrapper { position: relative; width: 100%; padding-top: 150%; background-color: #111; }
-        .home-poster { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-        .home-no-poster { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #555; font-size: 14px; }
-        .home-type-badge { position: absolute; top: 10px; right: 10px; background: rgba(10, 10, 10, 0.8); backdrop-filter: blur(4px); padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; border: 1px solid rgba(255,255,255,0.1); }
-        .remove-from-list-btn { position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.6); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(4px); }
-        .remove-from-list-btn:hover { background: rgba(239, 68, 68, 0.8); color: #fff; border-color: #ef4444; }
-        .home-card-content { padding: 16px; display: flex; flex-direction: column; flex-grow: 1; justify-content: space-between; }
-        .home-card-header { margin-bottom: 16px; }
-        .home-title { margin: 0 0 6px 0; font-size: 16px; font-weight: bold; line-height: 1.3; color: #fff; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .home-subtitle { margin: 0; font-size: 13px; color: #94a3b8; }
-        .home-date-text { margin: 0; font-size: 13px; color: #2ecc71; display: flex; align-items: center; font-weight: bold; }
-        .home-card-actions { display: flex; flex-direction: column; gap: 12px; }
-        .home-status-select { background: #0a0a0a; color: #e5e5e5; border: 1px solid #333; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; width: 100%; appearance: none; transition: border-color 0.2s; }
-        .home-status-select:focus { border-color: #38bdf8; outline: none; }
-        .home-bottom-actions { display: flex; justify-content: space-between; align-items: center; }
-        .home-rating-row { display: flex; align-items: center; gap: 8px; background: #0a0a0a; padding: 4px 8px; border-radius: 8px; border: 1px solid #333; }
-        .home-rating-input { width: 40px; background: transparent; color: #fff; border: none; padding: 4px 0; text-align: center; font-size: 14px; font-weight: bold; }
-        .home-rating-input:focus { outline: none; }
-        .home-delete-btn { background: transparent; border: none; color: #64748b; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-        .home-delete-btn:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-radius: 6px; }
+        
+        /* Layout Grids */
+        .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 20px; grid-auto-flow: dense; }
+        
+        .home-horizontal-scroll { display: flex; gap: 20px; overflow-x: auto; padding-bottom: 15px; scroll-behavior: smooth; align-items: stretch; }
+        .scroll-item-narrow { flex: 0 0 auto; width: 170px; }
+        .scroll-item-wide { flex: 0 0 auto; width: 320px; }
+        
+        .home-horizontal-scroll::-webkit-scrollbar { height: 8px; }
+        .home-horizontal-scroll::-webkit-scrollbar-track { background: #1a1a1a; border-radius: 10px; }
+        .home-horizontal-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .home-horizontal-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        /* Dashboard Enhancements */
+        .dashboard-layout { display: flex; flex-direction: column; gap: 40px; }
+        .dashboard-block { padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
+        .watching-block { background: linear-gradient(145deg, rgba(15,23,42,0.6) 0%, rgba(10,10,10,1) 100%); }
+        .upcoming-block { background: linear-gradient(145deg, rgba(67,20,7,0.3) 0%, rgba(10,10,10,1) 100%); border-color: rgba(249,115,22,0.1); }
+        .completed-block { background: linear-gradient(145deg, rgba(6,78,59,0.2) 0%, rgba(10,10,10,1) 100%); }
+        
+        .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 25px; }
+        .icon-wrap { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .bg-blue { background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); }
+        .bg-orange { background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.3); }
+        .bg-green { background: rgba(46, 204, 113, 0.15); border: 1px solid rgba(46, 204, 113, 0.3); }
+        
+        .mb-0 { margin-bottom: 0 !important; }
+        .border-0 { border-bottom: none !important; padding-bottom: 0 !important; }
+        .pl-14 { padding-left: 54px; }
+        
+        /* Others */
         .home-loading-state, .home-empty-state { text-align: center; padding: 80px 0; color: #94a3b8; display: flex; flex-direction: column; align-items: center; }
         .home-empty-text { color: #64748b; font-style: italic; font-size: 15px; }
         .home-spinner { width: 40px; height: 40px; border: 3px solid rgba(56, 189, 248, 0.2); border-top-color: #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px auto; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .home-section { margin-bottom: 40px; }
+
         .home-section-title { font-size: 22px; font-weight: bold; color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid #2a2a2a; }
+
         .lists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
         .list-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 20px; display: flex; gap: 16px; cursor: pointer; position: relative; transition: all 0.2s ease; }
         .list-card:hover { transform: translateY(-4px); border-color: #38bdf8; box-shadow: 0 10px 20px rgba(0,0,0,0.4); }
@@ -677,12 +518,14 @@ export default function Home() {
         .list-actions button { background: rgba(0,0,0,0.5); border: none; color: #94a3b8; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
         .list-actions button:hover { color: #fff; background: #38bdf8; }
         .list-actions button.delete:hover { background: #ef4444; }
+
         .home-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; justify-content: center; align-items: flex-start; padding-top: 80px; z-index: 1000; }
         .home-modal { background: #1a1a1a; width: 100%; max-width: 640px; border-radius: 16px; padding: 24px; max-height: 80vh; display: flex; flex-direction: column; border: 1px solid #2a2a2a; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
         .home-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .home-modal-title { margin: 0; font-size: 20px; font-weight: bold; color: #fff; }
         .home-close-btn { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; transition: color 0.2s; }
         .home-close-btn:hover { color: #fff; }
+        
         .home-search-form { display: flex; gap: 12px; margin-bottom: 24px; }
         .home-search-input-wrapper { flex-grow: 1; position: relative; display: flex; align-items: center; }
         .home-search-icon { position: absolute; left: 12px; }
@@ -691,7 +534,7 @@ export default function Home() {
         textarea.home-search-input { padding-left: 12px; }
         .home-search-submit-btn { background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid #38bdf8; padding: 10px 24px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 15px; transition: all 0.2s; }
         .home-search-submit-btn:hover:not(:disabled) { background: #38bdf8; color: #000; }
-        .home-search-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
         .home-search-results { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 8px; }
         .home-search-item { display: flex; align-items: center; gap: 16px; background: #0a0a0a; border: 1px solid #2a2a2a; padding: 12px; border-radius: 12px; cursor: pointer; transition: all 0.2s ease; }
         .home-search-item:hover { background: #1e293b; border-color: #38bdf8; }

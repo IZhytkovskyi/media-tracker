@@ -1,13 +1,11 @@
 // src/db/database.js
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
-
 dotenv.config();
 
 const db = new Database(process.env.DB_FILE || './src/db/tracker.db', {
     // verbose: console.log
 });
-
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -37,6 +35,7 @@ const initDB = () => {
             release_date TEXT,
             start_date TEXT,
             finish_date TEXT,
+            next_episode_cache TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -51,6 +50,7 @@ const initDB = () => {
             finish_date TEXT,
             comment TEXT,
             rating REAL,
+            parent_log_id INTEGER REFERENCES watch_logs(id) ON DELETE CASCADE,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (media_id) REFERENCES media_items (id) ON DELETE CASCADE
         );
@@ -78,10 +78,12 @@ const initDB = () => {
     `;
     db.exec(createListItemsTable);
 
+    // Міграції для існуючих таблиць
     const mediaTableInfo = db.pragma("table_info(media_items)");
     const mediaColumnNames = mediaTableInfo.map(col => col.name);
     if (!mediaColumnNames.includes('external_id')) db.exec(`ALTER TABLE media_items ADD COLUMN external_id TEXT UNIQUE`);
     if (!mediaColumnNames.includes('parent_id')) db.exec(`ALTER TABLE media_items ADD COLUMN parent_id INTEGER REFERENCES media_items(id) ON DELETE CASCADE`);
+    if (!mediaColumnNames.includes('next_episode_cache')) db.exec(`ALTER TABLE media_items ADD COLUMN next_episode_cache TEXT`);
 
     const logTableInfo = db.pragma("table_info(watch_logs)");
     const logColumnNames = logTableInfo.map(col => col.name);
@@ -92,14 +94,14 @@ const initDB = () => {
             db.exec(`UPDATE watch_logs SET finish_date = watch_date WHERE finish_date IS NULL`);
         }
     }
-    // Нова колонка для зв'язку логів між собою
     if (!logColumnNames.includes('parent_log_id')) {
         db.exec(`ALTER TABLE watch_logs ADD COLUMN parent_log_id INTEGER REFERENCES watch_logs(id) ON DELETE CASCADE`);
     }
 
+    // Тригери для updated_at
     const createUpdateTrigger = `
-        CREATE TRIGGER IF NOT EXISTS update_media_items_time 
-          AFTER UPDATE ON media_items
+        CREATE TRIGGER IF NOT EXISTS update_media_items_time
+           AFTER UPDATE ON media_items
         BEGIN
             UPDATE media_items SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END;
@@ -107,15 +109,21 @@ const initDB = () => {
     db.exec(createUpdateTrigger);
 
     const createListUpdateTrigger = `
-        CREATE TRIGGER IF NOT EXISTS update_custom_lists_time 
-          AFTER UPDATE ON custom_lists
+        CREATE TRIGGER IF NOT EXISTS update_custom_lists_time
+           AFTER UPDATE ON custom_lists
         BEGIN
             UPDATE custom_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END;
     `;
     db.exec(createListUpdateTrigger);
 
-    console.log('База даних ініціалізована успішно.');
+    // Індекси для прискорення (ОПТИМІЗАЦІЯ)
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_media_parent ON media_items(parent_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_media_status ON media_items(status);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_media_type ON media_items(media_type);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_watch_logs_media ON watch_logs(media_id);`);
+
+    console.log('Базу даних ініціалізовано та оновлено.');
 };
 
 initDB();

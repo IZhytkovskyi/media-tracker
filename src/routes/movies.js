@@ -1,7 +1,9 @@
+// src/routes/movies.js
 import { 
     getAllMedia, getMediaById, getMediaByExternalId, getMediaChildren,
     createMedia, updateMedia, deleteMedia,
-    getMediaLogs, createMediaLog, updateMediaLog, deleteMediaLog
+    getMediaLogs, createMediaLog, updateMediaLog, deleteMediaLog,
+    getUpcomingMedia, watchNextEpisode
 } from '../controllers/movies.js';
 
 const createMediaSchema = {
@@ -71,11 +73,13 @@ const logSchema = {
 
 export default async function mediaRoutes(fastify, options) {
     fastify.get('/media', getAllMedia);
+    fastify.get('/media/upcoming', getUpcomingMedia); 
     fastify.get('/media/:id', getMediaById);
     fastify.get('/media/external/:externalId', getMediaByExternalId);
     fastify.get('/media/:id/children', getMediaChildren);
     
     fastify.post('/media', { schema: createMediaSchema }, createMedia);
+    fastify.post('/media/:id/watch-next', watchNextEpisode); // Маршрут для миттєвої відмітки наступної серії
     fastify.patch('/media/:id', { schema: updateMediaSchema }, updateMedia);
     fastify.delete('/media/:id', deleteMedia);
 

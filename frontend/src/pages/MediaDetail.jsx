@@ -12,6 +12,7 @@ export default function MediaDetail() {
   const navigate = useNavigate();
   const [localMedia, setLocalMedia] = useState(null);
   const [tmdbData, setTmdbData] = useState(null);
+  const [omdbData, setOmdbData] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('main');
@@ -66,6 +67,16 @@ export default function MediaDetail() {
             if (tmdbJson.data.poster_path) {
               const url = `https://image.tmdb.org/t/p/w154${tmdbJson.data.poster_path}`;
               getAverageColor(url).then(color => setDominantColor(color));
+            }
+            
+            // Запит до OMDb за IMDb ID
+            if (tmdbJson.data.imdb_id) {
+              fetch(`/api/external/omdb/details/${tmdbJson.data.imdb_id}`)
+                .then(res => res.json())
+                .then(omdbJson => {
+                  if (omdbJson.data) setOmdbData(omdbJson.data);
+                })
+                .catch(e => console.error("Помилка завантаження OMDb:", e));
             }
           }
         }
@@ -455,7 +466,7 @@ export default function MediaDetail() {
             </div>
           </div>
 
-          {activeTab === 'main' && <TabMain media={displayMedia} tmdbData={tmdbData} />}
+          {activeTab === 'main' && <TabMain media={displayMedia} tmdbData={tmdbData} omdbData={omdbData} />}
           {activeTab === 'seasons' && <TabSeasons tmdbData={tmdbData} media={displayMedia} />}
           {activeTab === 'actors' && <TabActors tmdbData={tmdbData} />}
           {activeTab === 'shots' && <TabShots tmdbData={tmdbData} />}
