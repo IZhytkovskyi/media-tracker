@@ -7,6 +7,7 @@ import MediaDetail from './pages/MediaDetail';
 import SeasonDetail from './pages/SeasonDetail';
 import EpisodeDetail from './pages/EpisodeDetail';
 import PersonDetail from './pages/PersonDetail';
+import Stats from './pages/Stats';
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/stats" element={<Stats />} />
           <Route path="/media/:type/:tmdbId" element={<MediaDetail />} />
           <Route path="/media/:type/:tmdbId/season/:seasonNumber" element={<SeasonDetail />} />
           <Route path="/media/:type/:tmdbId/season/:seasonNumber/episode/:episodeNumber" element={<EpisodeDetail />} />
