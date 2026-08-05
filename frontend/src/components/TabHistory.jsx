@@ -4,12 +4,14 @@ import { Plus, X, Trash2, Clock, Calendar, Tv, Film, Pen } from 'lucide-react';
 import { styles } from '../styles/mediaDetailStyles';
 import { api } from '../utils/api';
 import { getLocalDateString } from '../utils';
+import { useToast } from './ToastContext';
 
-export default function TabHistory({ localMedia, logs, onHistoryChange }) {
+export default function TabHistory({ localMedia, logs, onHistoryChange, ensureLocalMedia }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLogId, setEditingLogId] = useState(null);
   const [customDate, setCustomDate] = useState(getLocalDateString());
   const [customTime, setCustomTime] = useState('12:00');
+  const { success, error } = useToast();
 
   const groupedLogs = (logs || []).reduce((acc, log) => {
     const dateObj = new Date(log.watched_at || new Date());
@@ -40,31 +42,48 @@ export default function TabHistory({ localMedia, logs, onHistoryChange }) {
 
   const handleCustomSubmit = async (e) => {
     e.preventDefault();
-    if (!localMedia && !editingLogId) return;
     
-    const isoString = new Date(`${customDate}T${customTime}:00`).toISOString();
-    
+    let targetMediaId = localMedia?.id;
+
     try {
+      if (!editingLogId) {
+        if (!targetMediaId && ensureLocalMedia) {
+          const media = await ensureLocalMedia();
+          if (media) targetMediaId = media.id;
+        }
+        if (!targetMediaId) {
+            error('Не вдалося визначити медіа для запису.');
+            return;
+        }
+      }
+
+      const isoString = new Date(`${customDate}T${customTime}:00`).toISOString();
+      
       if (editingLogId) {
         await api.updateHistoryRecord(editingLogId, { watched_at: isoString });
+        success('Лог успішно оновлено');
       } else {
-        await api.addToHistory(localMedia.id, { watched_at: isoString });
+        await api.addToHistory(targetMediaId, { watched_at: isoString });
+        success('Новий перегляд успішно додано');
       }
       setIsModalOpen(false);
       setEditingLogId(null);
-      if (onHistoryChange) onHistoryChange();
+      if (onHistoryChange) onHistoryChange(targetMediaId);
     } catch (err) {
       console.error(err);
+      error(err.message || 'Виникла помилка при збереженні логу');
     }
   };
 
   const handleDeleteRecord = async (historyId) => {
-    if (!window.confirm('Видалити цей перегляд з історії?')) return;
+    if (!window.confirm('Точно бажаєте видалити цей перегляд?')) return;
     try {
       await api.removeHistoryRecord(historyId);
-      if (onHistoryChange) onHistoryChange();
+      success('Лог успішно видалено');
+      if (onHistoryChange) onHistoryChange(localMedia?.id);
     } catch (err) {
       console.error(err);
+      error(err.message || 'Виникла помилка при видаленні логу');
     }
   };
 
@@ -80,7 +99,7 @@ export default function TabHistory({ localMedia, logs, onHistoryChange }) {
       {(!logs || logs.length === 0) ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
           <Clock size={40} style={{ marginBottom: '10px', opacity: 0.5 }} />
-          <p style={{ margin: 0, fontSize: '15px' }}>Ви ще не дивилися це.</p>
+          <p style={{ margin: 0, fontSize: '15px' }}>Ще немає записів в історії.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
@@ -98,8 +117,8 @@ export default function TabHistory({ localMedia, logs, onHistoryChange }) {
                   
                   return (
                     <div key={log.id} style={{ 
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                      backgroundColor: '#1a1a1a', padding: '12px 16px', borderRadius: '10px', 
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      backgroundColor: '#1a1a1a', padding: '12px 16px', borderRadius: '10px',
                       border: '1px solid #2a2a2a', transition: 'border-color 0.2s' 
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -111,11 +130,11 @@ export default function TabHistory({ localMedia, logs, onHistoryChange }) {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <span style={{ color: '#fff', fontSize: '15px', fontWeight: '600' }}>
-                            {isEpisode ? `${log.media_title}` : (localMedia?.title || 'Фільм')}
+                            {isEpisode ? `${log.media_title}` : (localMedia?.title || 'Без назви')}
                           </span>
                           {isEpisode && (
                             <span style={{ color: '#38bdf8', fontSize: '12px', fontWeight: 'bold', marginTop: '2px' }}>
-                              Сезон {log.season} Епізод {log.episode}
+                                Сезон {log.season} Епізод {log.episode}
                             </span>
                           )}
                         </div>
@@ -123,20 +142,20 @@ export default function TabHistory({ localMedia, logs, onHistoryChange }) {
                       
                       <div style={{ display: 'flex', gap: '5px' }}>
                         <button 
-                          onClick={() => handleOpenEditModal(log)} 
+                          onClick={() => handleOpenEditModal(log)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#64748b', transition: 'color 0.2s' }}
                           onMouseEnter={e => e.currentTarget.style.color = '#38bdf8'}
                           onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
-                          title="Редагувати перегляд"
+                          title="Редагувати"
                         >
                           <Pen size={18} />
                         </button>
                         <button 
-                          onClick={() => handleDeleteRecord(log.id)} 
+                          onClick={() => handleDeleteRecord(log.id)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: '#64748b', transition: 'color 0.2s' }}
                           onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
                           onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
-                          title="Видалити перегляд"
+                          title="Видалити"
                         >
                           <Trash2 size={18} />
                         </button>
@@ -156,7 +175,7 @@ export default function TabHistory({ localMedia, logs, onHistoryChange }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h3 style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Clock size={20} color="#38bdf8" /> 
-                {editingLogId ? 'Редагувати перегляд' : 'Додати перегляд'}
+                {editingLogId ? 'Редагувати лог' : 'Додати лог'}
               </h3>
               <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={18}/></button>
             </div>

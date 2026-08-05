@@ -11,15 +11,14 @@ import { api } from '../utils/api';
 export default function EpisodeDetail() {
   const { type, tmdbId, seasonNumber, episodeNumber } = useParams();
   const navigate = useNavigate();
-  
   const [localMedia, setLocalMedia] = useState(null);
   const [episodeData, setEpisodeData] = useState(null);
-  const [seriesData, setSeriesData] = useState(null); 
+  const [seriesData, setSeriesData] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dominantColor, setDominantColor] = useState('10, 10, 10');
   const [activeTab, setActiveTab] = useState('main');
-  
+
   const externalId = `episode_${episodeData?.id || 'temp'}`;
   const creatingRef = useRef(null);
 
@@ -81,7 +80,7 @@ export default function EpisodeDetail() {
       try {
         if (!seriesData || !episodeData) return null;
         
-        // 1. Отримуємо або створюємо серіал
+        // 1. Спочатку перевіряємо/створюємо серіал
         let seriesMediaId = null;
         try {
             const seriesRes = await api.getMediaByExternalId(`tv_${tmdbId}`);
@@ -104,7 +103,7 @@ export default function EpisodeDetail() {
 
         if (!seriesMediaId) return null;
 
-        // 2. Отримуємо або створюємо сезон
+        // 2. Потім сезон
         let seasonMediaId = null;
         const sRes = await fetch(`/api/external/tmdb/details/series/${tmdbId}/season/${seasonNumber}`);
         let epCount = 1;
@@ -138,7 +137,7 @@ export default function EpisodeDetail() {
             seasonMediaId = createSeasonRes.data.id;
         }
 
-        // 3. Створюємо епізод
+        // 3. І нарешті сам епізод
         try {
             const res = await api.createMedia({
                 title: `${seriesData.title} - S${seasonNumber}E${episodeNumber}`,
@@ -160,6 +159,7 @@ export default function EpisodeDetail() {
             setLocalMedia(retryRes.data);
             return retryRes.data;
         }
+
       } catch (err) {} finally {
         creatingRef.current = null;
       }
@@ -197,12 +197,12 @@ export default function EpisodeDetail() {
   };
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!episodeData) return <div style={styles.loadingWrapper}>Дані не знайдено</div>;
+  if (!episodeData) return <div style={styles.loadingWrapper}>Епізод не знайдено</div>;
 
   const displaySeriesTitle = seriesData ? seriesData.title : 'Завантаження...';
-  
+
   const tabs = [
-    { id: 'main', label: 'Деталі' },
+    { id: 'main', label: 'Огляд' },
     { id: 'actors', label: 'Актори' },
     { id: 'shots', label: 'Кадри' },
     { id: 'history', label: 'Історія' },
@@ -217,9 +217,9 @@ export default function EpisodeDetail() {
           <>
             <div style={{ ...styles.backdropImage, backgroundImage: `url(https://image.tmdb.org/t/p/original${episodeData.still_path})` }} />
             <div style={{ 
-                 ...styles.backdropGradient, 
-                 background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.5) 0%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 100%)` 
-               }} />
+                  ...styles.backdropGradient, 
+                  background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.5) 0%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 100%)` 
+                }} />
           </>
       )}
 
@@ -239,9 +239,9 @@ export default function EpisodeDetail() {
           </div>
           
           <ActionButtons 
-              type="episode" 
-              localMedia={localMedia} 
-              ensureLocalMedia={ensureLocalMedia}
+               type="episode"
+               localMedia={localMedia} 
+               ensureLocalMedia={ensureLocalMedia}
               handleUpdate={handleUpdate}
               handleAddToHistory={handleAddToHistory}
               handleRemoveFromHistory={handleRemoveFromHistory}
@@ -259,7 +259,7 @@ export default function EpisodeDetail() {
                 </span>
                 {' '}-{' '}
                 <span onClick={() => navigate(`/media/series/${tmdbId}/season/${seasonNumber}`)} className="series-link">
-                        Сезон {seasonNumber}
+                    Сезон {seasonNumber}
                 </span>
             </h2>
             <style>{`
@@ -291,10 +291,10 @@ export default function EpisodeDetail() {
             <TabHistory 
               localMedia={localMedia}
               logs={logs} 
+              ensureLocalMedia={ensureLocalMedia}
               onHistoryChange={() => reloadLocalMedia()}
             />
           )}
-
         </div>
       </div>
     </div>

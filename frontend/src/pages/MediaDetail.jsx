@@ -6,12 +6,11 @@ import { MediaGlobalStyles, styles } from '../styles/mediaDetailStyles';
 import { TabMain, TabActors, TabShots, TabPremiere, TabSources, TabHistory, TabSeasons } from '../components/MediaTabs';
 import ActionButtons from '../components/ActionButtons';
 import { getAverageColor } from '../utils';
-import { api } from '../utils/api'; // Імпортуємо наш новий API
+import { api } from '../utils/api';
 
 export default function MediaDetail() {
   const { type, tmdbId } = useParams();
   const navigate = useNavigate();
-  
   const [localMedia, setLocalMedia] = useState(null);
   const [tmdbData, setTmdbData] = useState(null);
   const [omdbData, setOmdbData] = useState(null);
@@ -20,7 +19,7 @@ export default function MediaDetail() {
   const [activeTab, setActiveTab] = useState('main');
   const [dominantColor, setDominantColor] = useState('10, 10, 10');
   const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
-  
+
   const creatingRef = useRef(null);
   const externalId = `${type === 'series' ? 'tv' : 'movie'}_${tmdbId}`;
 
@@ -34,7 +33,7 @@ export default function MediaDetail() {
       setLogs(logsRes.data || []);
       setLocalMedia(mediaRes.data || null);
     } catch (err) {
-      console.error('Помилка оновлення даних:', err);
+      console.error('Помилка оновлення історії/фільму:', err);
     }
   };
 
@@ -65,14 +64,13 @@ export default function MediaDetail() {
               getAverageColor(url).then(color => setDominantColor(color));
             }
             
-            // OMDb
             if (tmdbJson.data.imdb_id) {
               fetch(`/api/external/omdb/details/${tmdbJson.data.imdb_id}`)
                 .then(res => res.json())
                 .then(omdbJson => {
                   if (omdbJson.data) setOmdbData(omdbJson.data);
                 })
-                .catch(e => console.error("Помилка OMDb:", e));
+                .catch(e => console.error("Помилка завантаження OMDb:", e));
             }
           }
         }
@@ -112,7 +110,7 @@ export default function MediaDetail() {
         setLocalMedia(res.data);
         return res.data;
       } catch (err) {
-        console.error('Помилка створення медіа:', err);
+        console.error('Помилка створення media:', err);
       } finally {
         creatingRef.current = null;
       }
@@ -121,7 +119,6 @@ export default function MediaDetail() {
     return await creatingRef.current;
   };
 
-  // === Нові функції взаємодії з API ===
   const handleUpdate = async (mediaId, updates) => {
     try {
       await api.updateMedia(mediaId, updates);
@@ -152,17 +149,19 @@ export default function MediaDetail() {
 
   const rotatingPosters = useMemo(() => {
     if (!tmdbData?.images?.posters || tmdbData.images.posters.length === 0) {
-      return tmdbData?.poster_path ? [{ url: tmdbData.poster_path, label: 'Офіційний' }] : [];
+      return tmdbData?.poster_path ? [{ url: tmdbData.poster_path, label: 'Обкладинка' }] : [];
     }
     const posters = tmdbData.images.posters;
     const originalLang = tmdbData.original_language;
     const postersData = [];
+    
     const addPosters = (list, label) => {
       list.forEach(p => postersData.push({ url: p.file_path, label }));
     };
-    addPosters(posters.filter(p => p.iso_639_1 === 'uk'), 'Український');
-    addPosters(posters.filter(p => p.iso_639_1 === 'en'), 'Англійський');
-    addPosters(posters.filter(p => p.iso_639_1 === originalLang && p.iso_639_1 !== 'uk' && p.iso_639_1 !== 'en'), 'Оригінальний');
+    
+    addPosters(posters.filter(p => p.iso_639_1 === 'uk'), 'UA');
+    addPosters(posters.filter(p => p.iso_639_1 === 'en'), 'EN');
+    addPosters(posters.filter(p => p.iso_639_1 === originalLang && p.iso_639_1 !== 'uk' && p.iso_639_1 !== 'en'), 'ORIG');
     addPosters(posters.filter(p => !p.iso_639_1 || p.iso_639_1 === 'none' || p.iso_639_1 === 'null'), 'Без тексту');
     
     const uniquePaths = [];
@@ -174,7 +173,7 @@ export default function MediaDetail() {
       }
     }
     if (uniquePaths.length === 0 && tmdbData.poster_path) {
-      return [{ url: tmdbData.poster_path, label: 'Офіційний' }];
+      return [{ url: tmdbData.poster_path, label: 'Обкладинка' }];
     }
     return uniquePaths;
   }, [tmdbData]);
@@ -190,7 +189,7 @@ export default function MediaDetail() {
   }, [rotatingPosters, currentPosterIndex]);
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!tmdbData) return <div style={styles.loadingWrapper}>Помилка завантаження TMDB</div>;
+  if (!tmdbData) return <div style={styles.loadingWrapper}>Помилка завантаження з TMDB</div>;
 
   const displayMedia = localMedia ? {
     ...localMedia,
@@ -208,13 +207,11 @@ export default function MediaDetail() {
   };
 
   const tabs = [
-    { id: 'main', label: 'Деталі' }
+    { id: 'main', label: 'Огляд' }
   ];
-
   if (type === 'series') {
     tabs.push({ id: 'seasons', label: 'Сезони' });
   }
-
   tabs.push(
     { id: 'actors', label: 'Актори' },
     { id: 'shots', label: 'Кадри' },
@@ -226,6 +223,7 @@ export default function MediaDetail() {
   return (
     <div style={styles.container}>
       <MediaGlobalStyles dominantColor={dominantColor} />
+      
       <style>{`
         .poster-hover-container { position: relative; width: 100%; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden; box-shadow: 0 15px 35px rgba(0,0,0,0.9); background-color: #111; }
         .poster-animated-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 0.6s ease-in-out; }
@@ -244,9 +242,9 @@ export default function MediaDetail() {
         <>
           <div style={{ ...styles.backdropImage, backgroundImage: `url(https://image.tmdb.org/t/p/original${tmdbData.backdrop_path})` }} />
           <div style={{ 
-            ...styles.backdropGradient, 
-            background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.5) 0%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 100%)` 
-          }} />
+             ...styles.backdropGradient, 
+             background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.5) 0%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 100%)` 
+           }} />
         </>
       )}
 
@@ -271,6 +269,7 @@ export default function MediaDetail() {
             {rotatingPosters[currentPosterIndex]?.label && (
               <div className="poster-lang-badge">{rotatingPosters[currentPosterIndex].label}</div>
             )}
+
             {rotatingPosters.length > 1 && (
               <>
                 <button className="poster-arrow-btn left" onClick={(e) => { e.stopPropagation(); setCurrentPosterIndex(prev => (prev - 1 + rotatingPosters.length) % rotatingPosters.length); }}><ChevronLeft size={22} /></button>
@@ -293,7 +292,7 @@ export default function MediaDetail() {
           {localMedia?.last_watched_at && (
             <div style={{ marginTop: '12px', textAlign: 'center', backgroundColor: '#1a1a1a', padding: '12px', borderRadius: '12px', border: '1px solid #2a2a2a' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#94a3b8', fontSize: '13px', marginBottom: '4px' }}>
-                <CalendarCheck size={14} /> Переглянуто
+                <CalendarCheck size={14} /> Останній перегляд
               </div>
               <span style={{ color: '#e2e8f0', fontWeight: 'bold', fontSize: '15px' }}>
                 {new Date(localMedia.last_watched_at).toLocaleDateString('uk-UA')}
@@ -328,7 +327,8 @@ export default function MediaDetail() {
             <TabHistory 
               localMedia={localMedia}
               logs={logs} 
-              onHistoryChange={() => reloadLogsAndMedia(localMedia?.id)}
+              ensureLocalMedia={ensureLocalMedia}
+              onHistoryChange={(id) => reloadLogsAndMedia(id || localMedia?.id)}
             />
           )}
         </div>

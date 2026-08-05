@@ -11,18 +11,15 @@ import { api } from '../utils/api';
 export default function SeasonDetail() {
   const { type, tmdbId, seasonNumber } = useParams();
   const navigate = useNavigate();
-  
   const [localMedia, setLocalMedia] = useState(null);
   const [seasonData, setSeasonData] = useState(null);
   const [seriesData, setSeriesData] = useState(null);
-  
-  // ВІДНОВЛЕНО: Стан для зберігання історії (logs)
   const [logs, setLogs] = useState([]); 
   const [episodeStatuses, setEpisodeStatuses] = useState({});
   const [loading, setLoading] = useState(true);
   const [dominantColor, setDominantColor] = useState('10, 10, 10');
   const [activeTab, setActiveTab] = useState('episodes');
-  
+
   const creatingRef = useRef(null);
   const externalId = `season_${seasonData?.id || 'temp'}`;
 
@@ -33,14 +30,11 @@ export default function SeasonDetail() {
       if (res.data) {
         setLocalMedia(res.data);
         
-        // ОНОВЛЕНО: Правильне завантаження історії та статусів епізодів
         const [historyRes, childrenRes] = await Promise.all([
             api.getHistory(res.data.id),
             api.getMediaChildren(res.data.id)
         ]);
-
         setLogs(historyRes.data || []);
-
         if (childrenRes.data) {
           const statusByEpisode = {};
           childrenRes.data.forEach(child => {
@@ -143,6 +137,7 @@ export default function SeasonDetail() {
             setLocalMedia(retryRes.data);
             return retryRes.data;
         }
+
       } catch (err) {} finally {
         creatingRef.current = null;
       }
@@ -227,17 +222,16 @@ export default function SeasonDetail() {
   };
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!seasonData) return <div style={styles.loadingWrapper}>Дані не знайдено</div>;
+  if (!seasonData) return <div style={styles.loadingWrapper}>Сезон не знайдено</div>;
 
   const displaySeriesTitle = seriesData ? seriesData.title : 'Завантаження...';
-  
   const totalEpisodes = seasonData.episodes?.length || 0;
   const watchedEpisodesCount = Object.values(episodeStatuses).filter(Boolean).length;
   const seasonProgressPercent = totalEpisodes > 0 ? (watchedEpisodesCount / totalEpisodes) * 100 : 0;
 
   const tabs = [
     { id: 'episodes', label: 'Епізоди' },
-    { id: 'main', label: 'Деталі' },
+    { id: 'main', label: 'Огляд' },
     { id: 'actors', label: 'Актори' },
     { id: 'shots', label: 'Кадри' },
     { id: 'history', label: 'Історія' },
@@ -248,9 +242,9 @@ export default function SeasonDetail() {
     <div style={styles.container}>
       <MediaGlobalStyles dominantColor={dominantColor} />
       
-      <div style={{
+      <div style={{ 
         position: 'absolute', top: 0, left: 0, right: 0, height: '400px', pointerEvents: 'none',
-        background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.2) 0%, rgba(10,10,10,0) 100%)`, zIndex: 0
+        background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.2) 0%, rgba(10,10,10,0) 100%)`, zIndex: 0 
       }} />
 
       <div style={styles.topNav}>
@@ -269,7 +263,7 @@ export default function SeasonDetail() {
           </div>
           
           <ActionButtons 
-            type="season" 
+            type="season"
             localMedia={localMedia} 
             ensureLocalMedia={ensureLocalMedia}
             handleUpdate={handleUpdate}
@@ -372,10 +366,10 @@ export default function SeasonDetail() {
                             </div>
                             
                             <p style={{ 
-                                margin: '8px 0 0 0', color: '#94a3b8', fontSize: '13px', lineHeight: '1.4', 
+                                margin: '8px 0 0 0', color: '#94a3b8', fontSize: '13px', lineHeight: '1.4',
                                 display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' 
                             }}>
-                                {ep.overview || 'Немає опису.'}
+                                {ep.overview || 'Опис відсутній'}
                             </p>
                         </div>
 
@@ -414,6 +408,7 @@ export default function SeasonDetail() {
             <TabHistory 
               localMedia={localMedia}
               logs={logs} 
+              ensureLocalMedia={ensureLocalMedia}
               onHistoryChange={() => reloadLocalMedia()}
             />
           )}
