@@ -1,24 +1,24 @@
+// frontend/src/pages/SeasonDetail.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, X, Check } from 'lucide-react';
+import { ArrowLeft, X, CheckCircle, Circle } from 'lucide-react';
 import { MediaGlobalStyles, styles } from '../styles/mediaDetailStyles';
 import ActionButtons from '../components/ActionButtons';
 import { TabMainSeason, TabActors, TabShots, TabHistory, TabSources } from '../components/MediaTabs';
-import { getAverageColor } from '../utils';
+import { getAverageColor, getLocalDateString } from '../utils';
+import { api } from '../utils/api';
 
 export default function SeasonDetail() {
   const { type, tmdbId, seasonNumber } = useParams();
   const navigate = useNavigate();
-
   const [localMedia, setLocalMedia] = useState(null);
   const [seasonData, setSeasonData] = useState(null);
   const [seriesData, setSeriesData] = useState(null);
-  const [logs, setLogs] = useState([]);
+  const [logs, setLogs] = useState([]); 
   const [episodeStatuses, setEpisodeStatuses] = useState({});
   const [loading, setLoading] = useState(true);
   const [dominantColor, setDominantColor] = useState('10, 10, 10');
-  
-  const [activeTab, setActiveTab] = useState('main');
+  const [activeTab, setActiveTab] = useState('episodes');
 
   const creatingRef = useRef(null);
   const externalId = `season_${seasonData?.id || 'temp'}`;
@@ -26,32 +26,29 @@ export default function SeasonDetail() {
   const reloadLocalMedia = async () => {
     if (!seasonData) return;
     try {
-      const res = await fetch(`/api/media/external/${externalId}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) {
-          setLocalMedia(json.data);
-          const logsRes = await fetch(`/api/media/${json.data.id}/logs`);
-          if (logsRes.ok) {
-            const logsJson = await logsRes.json();
-            setLogs(logsJson.data || []);
-          }
-          const childrenRes = await fetch(`/api/media/${json.data.id}/children`);
-          if (childrenRes.ok) {
-            const childrenJson = await childrenRes.json();
-            const statusByEpisode = {};
-            (childrenJson.data || []).forEach(child => {
-              if (child.media_type === 'episode') {
-                statusByEpisode[child.episode] = child.status;
-              }
-            });
-            setEpisodeStatuses(statusByEpisode);
-          }
-        } else {
-          setEpisodeStatuses({});
+      const res = await api.getMediaByExternalId(externalId);
+      if (res.data) {
+        setLocalMedia(res.data);
+        
+        const [historyRes, childrenRes] = await Promise.all([
+            api.getHistory(res.data.id),
+            api.getMediaChildren(res.data.id)
+        ]);
+        setLogs(historyRes.data || []);
+        if (childrenRes.data) {
+          const statusByEpisode = {};
+          childrenRes.data.forEach(child => {
+            if (child.media_type === 'episode') {
+              statusByEpisode[child.episode] = child.isWatched;
+            }
+          });
+          setEpisodeStatuses(statusByEpisode);
         }
       }
-    } catch (err) {}
+    } catch (err) {
+       setEpisodeStatuses({});
+       setLogs([]);
+    }
   };
 
   useEffect(() => {
@@ -99,64 +96,49 @@ export default function SeasonDetail() {
         if (!seriesData || !seasonData) return null;
         
         let seriesMediaId = null;
-        const seriesRes = await fetch(`/api/media/external/tv_${tmdbId}`);
-        if (!seriesRes.ok) {
-            // ОПТИМІЗАЦІЯ: Передаємо повні дані про батьківський серіал
-            const res = await fetch('/api/media', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title: seriesData.title, 
-                    original_title: seriesData.original_title,
-                    media_type: 'series', 
-                    external_id: `tv_${tmdbId}`, 
-                    tmdb_id: seriesData.tmdb_id,
-                    total_seasons: seriesData.total_seasons || seriesData.number_of_seasons || 1,
-                    poster_path: seriesData.poster_path,
-                    backdrop_path: seriesData.backdrop_path,
-                    release_date: seriesData.first_air_date || seriesData.release_date
-                })
+        try {
+            const seriesRes = await api.getMediaByExternalId(`tv_${tmdbId}`);
+            seriesMediaId = seriesRes.data.id;
+        } catch (err) {
+            const createSeriesRes = await api.createMedia({
+                title: seriesData.title, 
+                original_title: seriesData.original_title,
+                media_type: 'series', 
+                external_id: `tv_${tmdbId}`, 
+                tmdb_id: seriesData.tmdb_id,
+                total_seasons: seriesData.total_seasons || seriesData.number_of_seasons || 1,
+                total_episodes: seriesData.total_episodes || seriesData.number_of_episodes || 0,
+                poster_path: seriesData.poster_path,
+                backdrop_path: seriesData.backdrop_path,
+                release_date: seriesData.first_air_date || seriesData.release_date,
+                genres: seriesData.genres || []
             });
-            const j = await res.json();
-            if (res.ok && j.data?.id) {
-                seriesMediaId = j.data.id;
-            } else {
-                const retryRes = await fetch(`/api/media/external/tv_${tmdbId}`);
-                if (retryRes.ok) seriesMediaId = (await retryRes.json()).data?.id || null;
-            }
-        } else {
-            seriesMediaId = (await seriesRes.json()).data?.id || null;
+            seriesMediaId = createSeriesRes.data.id;
         }
+
         if (!seriesMediaId) return null;
 
-        // ОПТИМІЗАЦІЯ: Передаємо повні дані при створенні сезону
-        const res = await fetch('/api/media', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: `${seriesData.title} - ${seasonData.name}`,
-            original_title: seasonData.name,
-            media_type: 'season',
-            external_id: externalId,
-            parent_id: seriesMediaId,
-            poster_path: seasonData.poster_path || seriesData.poster_path,
-            release_date: seasonData.air_date || null,
-            season: parseInt(seasonNumber, 10),
-            total_episodes: seasonData.episodes?.length || 1,
-            tmdb_id: seasonData.id
-          })
-        });
-        
-        if (res.ok) {
-          const json = await res.json();
-          setLocalMedia(json.data);
-          return json.data;
-        } else {
-            const retrySeason = await fetch(`/api/media/external/${externalId}`);
-            if (retrySeason.ok) {
-                const json = await retrySeason.json();
-                setLocalMedia(json.data);
-                return json.data;
-            }
+        try {
+            const res = await api.createMedia({
+                title: `${seriesData.title} - ${seasonData.name}`,
+                original_title: seasonData.name,
+                media_type: 'season',
+                external_id: externalId,
+                parent_id: seriesMediaId,
+                poster_path: seasonData.poster_path || seriesData.poster_path,
+                release_date: seasonData.air_date || null,
+                season: parseInt(seasonNumber, 10),
+                total_episodes: seasonData.episodes?.length || 1,
+                tmdb_id: seasonData.id
+            });
+            setLocalMedia(res.data);
+            return res.data;
+        } catch (e) {
+            const retryRes = await api.getMediaByExternalId(externalId);
+            setLocalMedia(retryRes.data);
+            return retryRes.data;
         }
+
       } catch (err) {} finally {
         creatingRef.current = null;
       }
@@ -167,56 +149,93 @@ export default function SeasonDetail() {
 
   const handleUpdate = async (mediaId, updates) => {
     try {
-      const res = await fetch(`/api/media/${mediaId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
-      if (res.ok) await reloadLocalMedia();
-    } catch (err) {}
-  };
-
-  const handleLogCreate = async (mediaId, logData) => {
-    try {
-      const res = await fetch(`/api/media/${mediaId}/logs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(logData)
-      });
-      const json = await res.json().catch(() => null);
-      if (json?.warning) {
-        window.alert(`Увага:\n${json.warning}`);
-      }
+      await api.updateMedia(mediaId, updates);
       await reloadLocalMedia();
     } catch (err) {}
   };
 
-  const handleLogUpdate = async (mediaId, logId, logData) => {
+  const handleAddToHistory = async (mediaId, data) => {
     try {
-      const res = await fetch(`/api/media/logs/${logId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(logData)
-      });
-      const json = await res.json().catch(() => null);
-      if (json?.warning) {
-        window.alert(`Увага:\n${json.warning}`);
-      }
+      await api.addToHistory(mediaId, data);
       await reloadLocalMedia();
     } catch (err) {}
+  };
+
+  const handleRemoveFromHistory = async (mediaId) => {
+    try {
+      await api.removeFromHistory(mediaId);
+      await reloadLocalMedia();
+    } catch (err) {}
+  };
+
+  const handleToggleWatchlist = async (mediaId) => {
+    try {
+      await api.toggleWatchlist(mediaId);
+      await reloadLocalMedia();
+    } catch (err) {}
+  };
+
+  const handleQuickEpisodeWatch = async (e, ep) => {
+    e.stopPropagation();
+    const isWatched = !!episodeStatuses[ep.episode_number];
+    const newWatchedState = !isWatched;
+
+    setEpisodeStatuses(prev => ({ ...prev, [ep.episode_number]: newWatchedState }));
+
+    try {
+        const seasonMedia = await ensureLocalMedia();
+        if (!seasonMedia) throw new Error("Не вдалося створити сезон");
+
+        let epMediaId = null;
+        const epExtId = `episode_${ep.id}`;
+        
+        try {
+            const checkRes = await api.getMediaByExternalId(epExtId);
+            epMediaId = checkRes.data.id;
+        } catch (err) {
+            const createRes = await api.createMedia({
+                title: `${seriesData.title} - S${seasonNumber}E${ep.episode_number}`,
+                original_title: ep.name,
+                media_type: 'episode',
+                external_id: epExtId,
+                parent_id: seasonMedia.id,
+                poster_path: ep.still_path,
+                release_date: ep.air_date,
+                season: parseInt(seasonNumber, 10),
+                episode: ep.episode_number,
+                tmdb_id: ep.id
+            });
+            epMediaId = createRes.data.id;
+        }
+
+        if (newWatchedState) {
+            const isoString = new Date().toISOString();
+            await api.addToHistory(epMediaId, { watched_at: isoString });
+        } else {
+            await api.removeFromHistory(epMediaId);
+        }
+        
+        reloadLocalMedia();
+    } catch (err) {
+        console.error(err);
+        setEpisodeStatuses(prev => ({ ...prev, [ep.episode_number]: isWatched }));
+    }
   };
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!seasonData) return <div style={styles.loadingWrapper}>Немає даних</div>;
+  if (!seasonData) return <div style={styles.loadingWrapper}>Сезон не знайдено</div>;
 
   const displaySeriesTitle = seriesData ? seriesData.title : 'Завантаження...';
+  const totalEpisodes = seasonData.episodes?.length || 0;
+  const watchedEpisodesCount = Object.values(episodeStatuses).filter(Boolean).length;
+  const seasonProgressPercent = totalEpisodes > 0 ? (watchedEpisodesCount / totalEpisodes) * 100 : 0;
 
   const tabs = [
-    { id: 'main', label: 'Головна' },
-    { id: 'episodes', label: 'Серії' },
+    { id: 'episodes', label: 'Епізоди' },
+    { id: 'main', label: 'Огляд' },
     { id: 'actors', label: 'Актори' },
     { id: 'shots', label: 'Кадри' },
-    { id: 'history', label: 'Історія перегляду' },
+    { id: 'history', label: 'Історія' },
     { id: 'sources', label: 'Джерела' }
   ];
 
@@ -224,9 +243,9 @@ export default function SeasonDetail() {
     <div style={styles.container}>
       <MediaGlobalStyles dominantColor={dominantColor} />
       
-      <div style={{
+      <div style={{ 
         position: 'absolute', top: 0, left: 0, right: 0, height: '400px', pointerEvents: 'none',
-        background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.2) 0%, rgba(10,10,10,0) 100%)`, zIndex: 0
+        background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.2) 0%, rgba(10,10,10,0) 100%)`, zIndex: 0 
       }} />
 
       <div style={styles.topNav}>
@@ -243,21 +262,22 @@ export default function SeasonDetail() {
               style={styles.poster} 
             />
           </div>
+          
           <ActionButtons 
-             type="season" 
-             localMedia={localMedia} 
-             logs={logs}
+            type="season"
+            localMedia={localMedia} 
             ensureLocalMedia={ensureLocalMedia}
             handleUpdate={handleUpdate}
-            handleLogCreate={handleLogCreate}
-            handleLogUpdate={handleLogUpdate}
+            handleAddToHistory={handleAddToHistory}
+            handleRemoveFromHistory={handleRemoveFromHistory}
+            handleToggleWatchlist={handleToggleWatchlist}
           />
         </div>
 
         <div style={styles.rightColumn}>
           <div style={styles.headerBlock}>
             <h1 style={styles.mainTitle}>
-              {seasonData.season_number === 0 && !seasonData.name.toLowerCase().includes('спец') ? 'Спеціальні випуски' : seasonData.name}
+              {seasonData.season_number === 0 && !seasonData.name.toLowerCase().includes('спец') ? 'Спецвипуски' : seasonData.name}
             </h1>
             <h2 style={styles.originalTitle} onClick={() => navigate(`/media/series/${tmdbId}`)} className="series-link">
                 {displaySeriesTitle}
@@ -288,59 +308,95 @@ export default function SeasonDetail() {
             <>
               {seasonData.episodes && seasonData.episodes.length > 0 ? (
                 <div style={styles.sectionBlock}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '15px' }}>
-                    {seasonData.episodes.map(ep => {
-                      const epStatus = episodeStatuses[ep.episode_number];
-                      const isWatched = epStatus === 'completed';
+                  
+                  <div style={{ marginBottom: '25px', backgroundColor: '#1a1a1a', padding: '16px', borderRadius: '12px', border: '1px solid #2a2a2a' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Прогрес сезону</span>
+                      <span style={{ color: '#38bdf8', fontSize: '14px', fontWeight: 'bold' }}>
+                        {watchedEpisodesCount} / {totalEpisodes}
+                      </span>
+                    </div>
+                    <div style={{ height: '8px', backgroundColor: '#334155', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ 
+                        height: '100%', 
+                        backgroundColor: '#38bdf8', 
+                        width: `${seasonProgressPercent}%`,
+                        transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' 
+                      }}></div>
+                    </div>
+                  </div>
 
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {seasonData.episodes.map(ep => {
+                      const isWatched = !!episodeStatuses[ep.episode_number];
+                      
                       return (
                       <div 
                         key={ep.episode_number} 
-                        style={{
-                            backgroundColor: '#1a1a1a', borderRadius: '8px', overflow: 'hidden', 
-                            border: isWatched ? '1px solid #2ecc71' : '1px solid #2a2a2a', cursor: 'pointer', transition: 'transform 0.2s',
-                            position: 'relative'
+                        style={{ 
+                            display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: '#1a1a1a', 
+                            padding: '12px', borderRadius: '12px', border: isWatched ? '1px solid rgba(46, 204, 113, 0.3)' : '1px solid #2a2a2a', 
+                            cursor: 'pointer', transition: 'all 0.2s ease', position: 'relative'
                         }}
                         onClick={() => navigate(`/media/${type}/${tmdbId}/season/${seasonNumber}/episode/${ep.episode_number}`)}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#222'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1a1a1a'}
                       >
-                        <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'relative', width: '140px', flexShrink: 0 }}>
                           <img 
                             src={ep.still_path ? `https://image.tmdb.org/t/p/w300${ep.still_path}` : 'https://via.placeholder.com/300x170?text=No+Image'} 
-                            style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', opacity: isWatched ? 0.7 : 1 }} 
+                            style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: '8px', opacity: isWatched ? 0.5 : 1, transition: 'opacity 0.3s' }} 
                             alt={ep.name}
+                            loading="lazy"
                           />
-                          {isWatched && (
-                            <div style={{
-                              position: 'absolute', top: '8px', right: '8px',
-                              backgroundColor: '#2ecc71', borderRadius: '50%',
-                              width: '24px', height: '24px', display: 'flex',
-                              alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 1px 4px rgba(0,0,0,0.5)'
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                <span style={{ color: isWatched ? '#2ecc71' : '#38bdf8', fontSize: '13px', fontWeight: '900' }}>
+                                    {ep.episode_number}
+                                </span>
+                                <h3 style={{ margin: 0, color: isWatched ? '#cbd5e1' : '#fff', fontSize: '16px', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {ep.name}
+                                </h3>
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '15px', color: '#64748b', fontSize: '13px' }}>
+                                <span>{ep.air_date ? new Date(ep.air_date).toLocaleDateString('uk-UA') : 'Невідомо'}</span>
+                                {ep.runtime > 0 && <span>{ep.runtime} хв.</span>}
+                            </div>
+                            
+                            <p style={{ 
+                                margin: '8px 0 0 0', color: '#94a3b8', fontSize: '13px', lineHeight: '1.4',
+                                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' 
                             }}>
-                              <Check size={16} color="#000" strokeWidth={3} />
-                            </div>
-                          )}
+                                {ep.overview || 'Опис відсутній'}
+                            </p>
                         </div>
-                        <div style={{ padding: '12px' }}>
-                            <div style={{ color: isWatched ? '#2ecc71' : '#38bdf8', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>
-                                Серія {ep.episode_number}{isWatched ? ' ✓' : ''}
-                            </div>
-                            <div style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {ep.name}
-                            </div>
-                            <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
-                                {ep.air_date ? new Date(ep.air_date).toLocaleDateString('uk-UA') : 'Невідомо'}
-                            </div>
-                        </div>
+
+                        <button 
+                            onClick={(e) => handleQuickEpisodeWatch(e, ep)}
+                            style={{ 
+                                background: 'transparent', border: 'none', cursor: 'pointer', padding: '10px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            title={isWatched ? "Відмінити перегляд" : "Відмітити як переглянуте"}
+                        >
+                            {isWatched ? (
+                                <CheckCircle size={28} color="#2ecc71" fill="rgba(46, 204, 113, 0.2)" />
+                            ) : (
+                                <Circle size={28} color="#475569" />
+                            )}
+                        </button>
                       </div>
                       );
                     })}
                   </div>
                 </div>
               ) : (
-                <p style={styles.emptyText}>Епізоди не знайдені.</p>
+                <p style={styles.emptyText}>Епізоди не знайдено.</p>
               )}
             </>
           )}
@@ -351,19 +407,10 @@ export default function SeasonDetail() {
           
           {activeTab === 'history' && (
             <TabHistory 
+              localMedia={localMedia}
               logs={logs} 
-              viewType="season"
-              onUpdate={async (id, data) => localMedia && handleLogUpdate(localMedia.id, id, data)}
-              onCreate={async (data) => {
-                  const media = await ensureLocalMedia();
-                  if (media) await handleLogCreate(media.id, data);
-              }}
-              onDelete={async (id) => { 
-                 if(window.confirm('Видалити запис?')) {
-                     await fetch(`/api/media/logs/${id}`, { method: 'DELETE' });
-                     await reloadLocalMedia();
-                 }
-              }}
+              ensureLocalMedia={ensureLocalMedia}
+              onHistoryChange={() => reloadLocalMedia()}
             />
           )}
         </div>
