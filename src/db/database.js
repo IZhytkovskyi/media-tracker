@@ -1,7 +1,6 @@
 // src/db/database.js
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
-
 dotenv.config();
 
 const db = new Database(process.env.DB_FILE || './src/db/tracker.db', {
@@ -12,7 +11,7 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 const initDB = () => {
-    // 1. Основна таблиця медіа (без статусів і дат перегляду)
+    // 1. Таблиця медіа
     const createMediaTable = `
         CREATE TABLE IF NOT EXISTS media_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,7 +39,11 @@ const initDB = () => {
     `;
     db.exec(createMediaTable);
 
-    // 2. Історія переглядів (Trakt History)
+    // БЕЗПЕЧНА МІГРАЦІЯ: Додаємо нові колонки, якщо їх ще немає
+    try { db.exec("ALTER TABLE media_items ADD COLUMN runtime INTEGER;"); } catch (e) { /* Колонка вже існує */ }
+    try { db.exec("ALTER TABLE media_items ADD COLUMN production_countries TEXT;"); } catch (e) { /* Колонка вже існує */ }
+
+    // 2. Історія (Trakt History)
     const createHistoryTable = `
         CREATE TABLE IF NOT EXISTS history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +54,7 @@ const initDB = () => {
     `;
     db.exec(createHistoryTable);
 
-    // 3. У планах (Trakt Watchlist)
+    // 3. Відкладене (Trakt Watchlist)
     const createWatchlistTable = `
         CREATE TABLE IF NOT EXISTS watchlist (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,7 +65,7 @@ const initDB = () => {
     `;
     db.exec(createWatchlistTable);
 
-    // 4. Кастомні списки
+    // 4. Користувацькі списки
     const createCustomListsTable = `
         CREATE TABLE IF NOT EXISTS custom_lists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +89,7 @@ const initDB = () => {
 
     // Тригери для updated_at
     db.exec(`
-        CREATE TRIGGER IF NOT EXISTS update_media_items_time
+        CREATE TRIGGER IF NOT EXISTS update_media_items_time 
            AFTER UPDATE ON media_items
         BEGIN
             UPDATE media_items SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
@@ -94,21 +97,18 @@ const initDB = () => {
     `);
 
     db.exec(`
-        CREATE TRIGGER IF NOT EXISTS update_custom_lists_time
+        CREATE TRIGGER IF NOT EXISTS update_custom_lists_time 
            AFTER UPDATE ON custom_lists
         BEGIN
             UPDATE custom_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END;
     `);
 
-    // Індекси для швидкодії
+    // Індекси
     db.exec(`CREATE INDEX IF NOT EXISTS idx_media_parent ON media_items(parent_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_media_type ON media_items(media_type);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_history_media ON history(media_id);`);
-    
-    console.log('База даних успішно ініціалізована за новою логікою Trakt.');
 };
 
 initDB();
-
 export default db;

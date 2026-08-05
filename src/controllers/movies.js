@@ -73,7 +73,9 @@ const updateNextEpisodeCache = async (seriesId) => {
                 title: epData.name,
                 poster_path: epData.still_path || seasonData.poster_path || series.backdrop_path || series.poster_path,
                 tmdb_id: epData.id,
-                season_tmdb_id: seasonData.id
+                season_tmdb_id: seasonData.id,
+                release_date: epData.air_date || null,
+                season_release_date: seasonData.air_date || null
             };
             db.prepare('UPDATE media_items SET next_episode_cache = ? WHERE id = ?').run(JSON.stringify(nextEpisodeObj), series.id);
         } else {
@@ -182,13 +184,12 @@ const cascadeDownHistory = async (media, watchedAt) => {
                     let epMedia = db.prepare('SELECT id FROM media_items WHERE external_id = ?').get(epExtId);
                     
                     if (!epMedia) {
-                        const info = db.prepare(`INSERT INTO media_items (title, original_title, media_type, external_id, season, episode, parent_id, tmdb_id, poster_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-                            `${series.title} - S${media.season}E${ep.episode_number}`, ep.name, 'episode', epExtId, media.season, ep.episode_number, media.id, ep.id, ep.still_path || null
+                        const info = db.prepare(`INSERT INTO media_items (title, original_title, media_type, external_id, season, episode, parent_id, tmdb_id, poster_path, release_date, runtime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+                            `${series.title} - S${media.season}E${ep.episode_number}`, ep.name, 'episode', epExtId, media.season, ep.episode_number, media.id, ep.id, ep.still_path || null, ep.air_date || null, ep.runtime || null
                         );
                         epMedia = { id: info.lastInsertRowid };
                     }
 
-                    // Прибрано перевірку if(!exists), щоб дозволити множинні перегляди при перегляді цілого сезону
                     db.prepare(`INSERT INTO history (media_id, watched_at) VALUES (?, COALESCE(?, CURRENT_TIMESTAMP))`).run(epMedia.id, watchedAt || null);
                     removeFromWatchlistUp(epMedia.id);
                 }
@@ -208,13 +209,12 @@ const cascadeDownHistory = async (media, watchedAt) => {
                 let seasonMedia = db.prepare('SELECT id FROM media_items WHERE external_id = ?').get(seasonExtId);
                 
                 if (!seasonMedia) {
-                    const info = db.prepare(`INSERT INTO media_items (title, original_title, media_type, external_id, season, parent_id, tmdb_id, total_episodes, poster_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-                        `${media.title} - ${s.name}`, s.name, 'season', seasonExtId, s.season_number, media.id, s.id, s.episode_count || 0, s.poster_path || null
+                    const info = db.prepare(`INSERT INTO media_items (title, original_title, media_type, external_id, season, parent_id, tmdb_id, total_episodes, poster_path, release_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+                        `${media.title} - ${s.name}`, s.name, 'season', seasonExtId, s.season_number, media.id, s.id, s.episode_count || 0, s.poster_path || null, s.air_date || null
                     );
                     seasonMedia = { id: info.lastInsertRowid, season: s.season_number, parent_id: media.id, media_type: 'season' };
                 }
 
-                // Прибрано перевірку if(!exists)
                 db.prepare(`INSERT INTO history (media_id, watched_at) VALUES (?, COALESCE(?, CURRENT_TIMESTAMP))`).run(seasonMedia.id, watchedAt || null);
                 removeFromWatchlistUp(seasonMedia.id);
                 
@@ -265,7 +265,9 @@ export const getAllMedia = async (request, reply) => {
     
     let formattedItems = items.map((item) => {
         let parsedGenres = [];
+        let parsedCountries = [];
         try { parsedGenres = item.genres ? JSON.parse(item.genres) : []; } catch (e) { }
+        try { parsedCountries = item.production_countries ? JSON.parse(item.production_countries) : []; } catch (e) { }
 
         let progress = null;
         let nextEpisode = null;
@@ -298,7 +300,7 @@ export const getAllMedia = async (request, reply) => {
             }
         }
 
-        return { ...item, genres: parsedGenres, progress, nextEpisode };
+        return { ...item, genres: parsedGenres, production_countries: parsedCountries, progress, nextEpisode };
     });
 
     if (status === 'planned') {
@@ -368,6 +370,7 @@ export const getMediaById = async (request, reply) => {
     if (!item) return reply.code(404).send({ error: 'Медіа не знайдено' });
 
     try { item.genres = item.genres ? JSON.parse(item.genres) : []; } catch (e) { item.genres = []; }
+    try { item.production_countries = item.production_countries ? JSON.parse(item.production_countries) : []; } catch (e) { item.production_countries = []; }
     return { data: item };
 };
 
@@ -383,21 +386,24 @@ export const getMediaByExternalId = async (request, reply) => {
     if (!item) return reply.code(404).send({ error: 'Медіа не знайдено' });
 
     try { item.genres = item.genres ? JSON.parse(item.genres) : []; } catch (e) { item.genres = []; }
+    try { item.production_countries = item.production_countries ? JSON.parse(item.production_countries) : []; } catch (e) { item.production_countries = []; }
     return { data: item };
 };
 
 export const createMedia = async (request, reply) => {
     const data = request.body;
     const genresStr = data.genres ? JSON.stringify(data.genres) : null;
+    const countriesStr = data.production_countries ? JSON.stringify(data.production_countries) : null;
 
     try {
         const info = db.prepare(`
-            INSERT INTO media_items (title, original_title, media_type, external_id, parent_id, user_rating, review, season, episode, total_seasons, total_episodes, genres, poster_path, backdrop_path, release_date, tmdb_id, imdb_id) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(data.title, data.original_title || null, data.media_type, data.external_id, data.parent_id || null, data.rating ?? null, data.review || null, data.season || 0, data.episode || 0, data.total_seasons || 0, data.total_episodes || 0, genresStr, data.poster_path || null, data.backdrop_path || null, data.release_date || null, data.tmdb_id || null, data.imdb_id || null);
+            INSERT INTO media_items (title, original_title, media_type, external_id, parent_id, user_rating, review, season, episode, total_seasons, total_episodes, genres, poster_path, backdrop_path, release_date, tmdb_id, imdb_id, runtime, production_countries) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(data.title, data.original_title || null, data.media_type, data.external_id, data.parent_id || null, data.rating ?? null, data.review || null, data.season || 0, data.episode || 0, data.total_seasons || 0, data.total_episodes || 0, genresStr, data.poster_path || null, data.backdrop_path || null, data.release_date || null, data.tmdb_id || null, data.imdb_id || null, data.runtime || null, countriesStr);
         
         const newItem = db.prepare('SELECT * FROM media_items WHERE id = ?').get(info.lastInsertRowid);
         try { newItem.genres = newItem.genres ? JSON.parse(newItem.genres) : []; } catch(e){ newItem.genres=[]; }
+        try { newItem.production_countries = newItem.production_countries ? JSON.parse(newItem.production_countries) : []; } catch(e){ newItem.production_countries=[]; }
         
         reply.code(201);
         return { message: 'Створено', data: newItem };
@@ -413,13 +419,17 @@ export const updateMedia = async (request, reply) => {
     const existing = db.prepare('SELECT * FROM media_items WHERE id = ?').get(id);
     if (!existing) return reply.code(404).send({ error: 'Не знайдено' });
 
-    const allowedFields = ['title', 'original_title', 'user_rating', 'review', 'poster_path', 'backdrop_path'];
+    const allowedFields = ['title', 'original_title', 'user_rating', 'review', 'poster_path', 'backdrop_path', 'genres', 'release_date', 'runtime', 'production_countries', 'total_seasons', 'total_episodes'];
     const fields = []; const values = [];
     
     for (const [key, value] of Object.entries(updates)) {
         if (allowedFields.includes(key)) {
             fields.push(`${key} = ?`);
-            values.push(value);
+            if (key === 'genres' || key === 'production_countries') {
+                values.push(JSON.stringify(value));
+            } else {
+                values.push(value);
+            }
         }
     }
     
@@ -432,6 +442,7 @@ export const updateMedia = async (request, reply) => {
         
         const updatedItem = db.prepare('SELECT * FROM media_items WHERE id = ?').get(id);
         try { updatedItem.genres = updatedItem.genres ? JSON.parse(updatedItem.genres) : []; } catch(e){ updatedItem.genres=[]; }
+        try { updatedItem.production_countries = updatedItem.production_countries ? JSON.parse(updatedItem.production_countries) : []; } catch(e){ updatedItem.production_countries=[]; }
 
         return { message: 'Оновлено', data: updatedItem };
     } catch (error) {
@@ -470,7 +481,6 @@ export const addToHistory = async (request, reply) => {
     if (!media) return reply.code(404).send({ error: 'Медіа не знайдено' });
 
     try {
-        // Додаємо запис. Перевірку на існування прибрано.
         db.prepare(`INSERT INTO history (media_id, watched_at) VALUES (?, COALESCE(?, CURRENT_TIMESTAMP))`).run(id, watched_at || null);
         
         if (media.media_type === 'season' || media.media_type === 'series') {
@@ -514,15 +524,12 @@ export const removeFromHistory = async (request, reply) => {
 export const removeHistoryRecord = async (request, reply) => {
     const { history_id } = request.params;
     
-    // Знаходимо лог перед видаленням, щоб мати media_id
     const record = db.prepare('SELECT media_id FROM history WHERE id = ?').get(history_id);
     if (!record) return reply.code(404).send({ error: 'Лог не знайдено' });
 
     try {
-        // Видаляємо безпосередньо сам лог
         db.prepare('DELETE FROM history WHERE id = ?').run(history_id);
         
-        // Ізольований блок для виконання побічних дій (оновлення кешів, батьківських статусів)
         try {
             touchUpdatedAt(record.media_id);
             
@@ -590,20 +597,20 @@ export const watchNextEpisode = async (request, reply) => {
     let seasonMedia = db.prepare('SELECT id FROM media_items WHERE external_id = ?').get(seasonExtId);
 
     if (!seasonMedia) {
-        const info = db.prepare(`INSERT INTO media_items (title, media_type, external_id, season, parent_id, tmdb_id) VALUES (?, ?, ?, ?, ?, ?)`).run(
-            `${series.title} - Сезон ${nextEpCache.season}`, 'season', seasonExtId, nextEpCache.season, series.id, nextEpCache.season_tmdb_id
+        const infoSeason = db.prepare(`INSERT INTO media_items (title, media_type, external_id, season, parent_id, tmdb_id, release_date) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+            `${series.title} - Сезон ${nextEpCache.season}`, 'season', seasonExtId, nextEpCache.season, series.id, nextEpCache.season_tmdb_id, nextEpCache.season_release_date || null
         );
-        seasonMedia = { id: info.lastInsertRowid };
+        seasonMedia = { id: infoSeason.lastInsertRowid };
     }
 
     let epExtId = `episode_${nextEpCache.tmdb_id}`;
     let epMedia = db.prepare('SELECT id FROM media_items WHERE external_id = ?').get(epExtId);
 
     if (!epMedia) {
-        const info = db.prepare(`INSERT INTO media_items (title, original_title, media_type, external_id, season, episode, parent_id, tmdb_id, poster_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-            `${series.title} - S${nextEpCache.season}E${nextEpCache.episode}`, nextEpCache.title, 'episode', epExtId, nextEpCache.season, nextEpCache.episode, seasonMedia.id, nextEpCache.tmdb_id, nextEpCache.poster_path
+        const infoEp = db.prepare(`INSERT INTO media_items (title, original_title, media_type, external_id, season, episode, parent_id, tmdb_id, poster_path, release_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+            `${series.title} - S${nextEpCache.season}E${nextEpCache.episode}`, nextEpCache.title, 'episode', epExtId, nextEpCache.season, nextEpCache.episode, seasonMedia.id, nextEpCache.tmdb_id, nextEpCache.poster_path, nextEpCache.release_date || null
         );
-        epMedia = { id: info.lastInsertRowid };
+        epMedia = { id: infoEp.lastInsertRowid };
     }
 
     db.prepare(`INSERT INTO history (media_id) VALUES (?)`).run(epMedia.id);

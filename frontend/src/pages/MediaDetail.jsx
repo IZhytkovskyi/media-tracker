@@ -11,10 +11,12 @@ import { api } from '../utils/api';
 export default function MediaDetail() {
   const { type, tmdbId } = useParams();
   const navigate = useNavigate();
+
   const [localMedia, setLocalMedia] = useState(null);
   const [tmdbData, setTmdbData] = useState(null);
   const [omdbData, setOmdbData] = useState(null);
   const [logs, setLogs] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('main');
   const [dominantColor, setDominantColor] = useState('10, 10, 10');
@@ -33,7 +35,7 @@ export default function MediaDetail() {
       setLogs(logsRes.data || []);
       setLocalMedia(mediaRes.data || null);
     } catch (err) {
-      console.error('Помилка оновлення історії/фільму:', err);
+      console.error('Помилка оновлення логів:', err);
     }
   };
 
@@ -55,29 +57,71 @@ export default function MediaDetail() {
           }
         }
         
+        let tmdbJsonData = null;
         if (tmdbRes.ok) {
           const tmdbJson = await tmdbRes.json();
           if (tmdbJson.data) {
-            setTmdbData(tmdbJson.data);
-            if (tmdbJson.data.poster_path) {
-              const url = `https://image.tmdb.org/t/p/w154${tmdbJson.data.poster_path}`;
+            tmdbJsonData = tmdbJson.data;
+            setTmdbData(tmdbJsonData);
+
+            if (tmdbJsonData.poster_path) {
+              const url = `https://image.tmdb.org/t/p/w154${tmdbJsonData.poster_path}`;
               getAverageColor(url).then(color => setDominantColor(color));
             }
             
-            if (tmdbJson.data.imdb_id) {
-              fetch(`/api/external/omdb/details/${tmdbJson.data.imdb_id}`)
+            if (tmdbJsonData.imdb_id) {
+              fetch(`/api/external/omdb/details/${tmdbJsonData.imdb_id}`)
                 .then(res => res.json())
                 .then(omdbJson => {
                   if (omdbJson.data) setOmdbData(omdbJson.data);
                 })
-                .catch(e => console.error("Помилка завантаження OMDb:", e));
+                .catch(e => console.error("Помилка OMDb:", e));
             }
+          }
+        }
+
+        // Автоматична синхронізація (SMART SYNC)
+        if (localMediaData && tmdbJsonData) {
+          let updates = {};
+          
+          const newGenres = tmdbJsonData.genres || [];
+          const localGenres = localMediaData.genres || [];
+          if (JSON.stringify(newGenres) !== JSON.stringify(localGenres)) {
+              updates.genres = newGenres;
+          }
+          
+          const newReleaseDate = tmdbJsonData.release_date || tmdbJsonData.first_air_date || null;
+          if (newReleaseDate && newReleaseDate !== localMediaData.release_date) {
+              updates.release_date = newReleaseDate;
+          }
+          
+          const newTotalSeasons = tmdbJsonData.number_of_seasons || 0;
+          if (newTotalSeasons !== localMediaData.total_seasons) {
+              updates.total_seasons = newTotalSeasons;
+          }
+          
+          const newTotalEpisodes = tmdbJsonData.number_of_episodes || 0;
+          if (newTotalEpisodes !== localMediaData.total_episodes) {
+              updates.total_episodes = newTotalEpisodes;
+          }
+
+          if (tmdbJsonData.poster_path && tmdbJsonData.poster_path !== localMediaData.poster_path) {
+              updates.poster_path = tmdbJsonData.poster_path;
+          }
+          if (tmdbJsonData.backdrop_path && tmdbJsonData.backdrop_path !== localMediaData.backdrop_path) {
+              updates.backdrop_path = tmdbJsonData.backdrop_path;
+          }
+
+          if (Object.keys(updates).length > 0) {
+              api.updateMedia(localMediaData.id, updates).catch(console.error);
+              setLocalMedia(prev => ({...prev, ...updates}));
           }
         }
         
         if (localMediaData) {
           await reloadLogsAndMedia(localMediaData.id);
         }
+
       } catch (err) {
         console.error('Помилка завантаження:', err);
       } finally {
@@ -100,10 +144,10 @@ export default function MediaDetail() {
           external_id: externalId,
           poster_path: tmdbData.poster_path,
           backdrop_path: tmdbData.backdrop_path,
-          release_date: tmdbData.release_date,
+          release_date: tmdbData.release_date || tmdbData.first_air_date,
           genres: tmdbData.genres || [],
-          total_seasons: tmdbData.total_seasons || 0,
-          total_episodes: tmdbData.total_episodes || 0,
+          total_seasons: tmdbData.number_of_seasons || 0,
+          total_episodes: tmdbData.number_of_episodes || 0,
           tmdb_id: tmdbData.tmdb_id,
           imdb_id: tmdbData.imdb_id
         });
@@ -116,6 +160,7 @@ export default function MediaDetail() {
       }
       return null;
     })();
+
     return await creatingRef.current;
   };
 
@@ -149,8 +194,9 @@ export default function MediaDetail() {
 
   const rotatingPosters = useMemo(() => {
     if (!tmdbData?.images?.posters || tmdbData.images.posters.length === 0) {
-      return tmdbData?.poster_path ? [{ url: tmdbData.poster_path, label: 'Обкладинка' }] : [];
+      return tmdbData?.poster_path ? [{ url: tmdbData.poster_path, label: 'Основний' }] : [];
     }
+
     const posters = tmdbData.images.posters;
     const originalLang = tmdbData.original_language;
     const postersData = [];
@@ -162,7 +208,7 @@ export default function MediaDetail() {
     addPosters(posters.filter(p => p.iso_639_1 === 'uk'), 'UA');
     addPosters(posters.filter(p => p.iso_639_1 === 'en'), 'EN');
     addPosters(posters.filter(p => p.iso_639_1 === originalLang && p.iso_639_1 !== 'uk' && p.iso_639_1 !== 'en'), 'ORIG');
-    addPosters(posters.filter(p => !p.iso_639_1 || p.iso_639_1 === 'none' || p.iso_639_1 === 'null'), 'Без тексту');
+    addPosters(posters.filter(p => !p.iso_639_1 || p.iso_639_1 === 'none' || p.iso_639_1 === 'null'), 'Текст відсутній');
     
     const uniquePaths = [];
     const seen = new Set();
@@ -172,9 +218,11 @@ export default function MediaDetail() {
         uniquePaths.push(p);
       }
     }
+
     if (uniquePaths.length === 0 && tmdbData.poster_path) {
-      return [{ url: tmdbData.poster_path, label: 'Обкладинка' }];
+      return [{ url: tmdbData.poster_path, label: 'Основний' }];
     }
+
     return uniquePaths;
   }, [tmdbData]);
 
@@ -189,7 +237,7 @@ export default function MediaDetail() {
   }, [rotatingPosters, currentPosterIndex]);
 
   if (loading) return <div style={styles.loadingWrapper}>Завантаження...</div>;
-  if (!tmdbData) return <div style={styles.loadingWrapper}>Помилка завантаження з TMDB</div>;
+  if (!tmdbData) return <div style={styles.loadingWrapper}>Помилка завантаження даних з TMDB</div>;
 
   const displayMedia = localMedia ? {
     ...localMedia,
@@ -201,7 +249,7 @@ export default function MediaDetail() {
     media_type: type,
     poster_path: tmdbData.poster_path,
     backdrop_path: tmdbData.backdrop_path,
-    release_date: tmdbData.release_date,
+    release_date: tmdbData.release_date || tmdbData.first_air_date,
     genres: tmdbData.genres,
     runtime: tmdbData.runtime
   };
@@ -209,9 +257,11 @@ export default function MediaDetail() {
   const tabs = [
     { id: 'main', label: 'Огляд' }
   ];
+
   if (type === 'series') {
     tabs.push({ id: 'seasons', label: 'Сезони' });
   }
+
   tabs.push(
     { id: 'actors', label: 'Актори' },
     { id: 'shots', label: 'Кадри' },
@@ -241,10 +291,10 @@ export default function MediaDetail() {
       {tmdbData.backdrop_path && (
         <>
           <div style={{ ...styles.backdropImage, backgroundImage: `url(https://image.tmdb.org/t/p/original${tmdbData.backdrop_path})` }} />
-          <div style={{ 
-             ...styles.backdropGradient, 
-             background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.5) 0%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 100%)` 
-           }} />
+          <div style={{
+              ...styles.backdropGradient,
+              background: `linear-gradient(to bottom, rgba(${dominantColor}, 0.5) 0%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 100%)`
+            }} />
         </>
       )}
 
@@ -299,6 +349,7 @@ export default function MediaDetail() {
               </span>
             </div>
           )}
+
         </div>
 
         <div style={styles.rightColumn}>
@@ -331,6 +382,7 @@ export default function MediaDetail() {
               onHistoryChange={(id) => reloadLogsAndMedia(id || localMedia?.id)}
             />
           )}
+
         </div>
       </div>
     </div>

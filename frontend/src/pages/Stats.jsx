@@ -1,7 +1,7 @@
 // frontend/src/pages/Stats.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BarChart2, Film, Tv, Activity, Target } from 'lucide-react';
+import { ArrowLeft, BarChart2, Film, Tv, Activity, Target, Star, Calendar, TrendingUp } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function Stats() {
@@ -31,9 +31,20 @@ export default function Stats() {
     );
   }
 
-  // Обчислення максимальних значень для CSS-графіків
+  // Обчислення максимальних значень для пропорцій графіків
   const maxGenreCount = stats?.topGenres?.length > 0 ? Math.max(...stats.topGenres.map(g => g.count)) : 1;
   const maxActivityCount = stats?.activity?.length > 0 ? Math.max(...stats.activity.map(a => a.count)) : 1;
+  const maxRatingCount = stats?.ratings?.length > 0 ? Math.max(...stats.ratings.map(r => r.count)) : 1;
+  const maxDailyCount = stats?.dailyActivity?.length > 0 ? Math.max(...stats.dailyActivity.map(d => d.count)) : 1;
+
+  // Генерація масиву останніх 30 днів для безперервного графіка активності
+  const last30Days = Array.from({ length: 30 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (29 - i));
+    return d.toISOString().split('T')[0];
+  });
+
+  const dailyMap = new Map((stats?.dailyActivity || []).map(d => [d.date, d.count]));
 
   return (
     <div className="stats-container">
@@ -41,12 +52,12 @@ export default function Stats() {
         <button onClick={() => navigate('/')} className="nav-btn">
           <ArrowLeft size={18} /> Назад
         </button>
-        <h1 className="page-title"><BarChart2 size={24} color="#38bdf8" /> Статистика</h1>
+        <h1 className="page-title"><BarChart2 size={24} color="#38bdf8" /> Твоя Статистика</h1>
         <div style={{ width: '85px' }}></div> {/* Placeholder для балансу */}
       </header>
 
       <main className="stats-main">
-        {/* Верхні KPI картки */}
+        {/* Блок KPI (Головні цифри) */}
         <div className="kpi-grid">
           <div className="kpi-card">
             <div className="kpi-icon bg-blue"><Film size={24} color="#38bdf8" /></div>
@@ -71,10 +82,31 @@ export default function Stats() {
           </div>
         </div>
 
+        {/* Щоденна активність (Heatmap-подібний графік) */}
+        <div className="chart-card full-width">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+             <h3 className="chart-title" style={{ margin: 0 }}><TrendingUp size={18} color="#2ecc71" /> Активність за 30 днів</h3>
+          </div>
+          <div className="sparkline-container">
+            {last30Days.map(dateStr => {
+              const count = dailyMap.get(dateStr) || 0;
+              const heightPercent = count > 0 ? Math.max(10, (count / maxDailyCount) * 100) : 0;
+              return (
+                <div key={dateStr} className="sparkline-bar-wrapper" title={`${dateStr}: ${count} переглядів`}>
+                  <div className="sparkline-bar" style={{ 
+                      height: `${heightPercent}%`, 
+                      backgroundColor: count > 0 ? '#2ecc71' : '#1e293b' 
+                  }}></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="charts-grid">
           {/* Улюблені жанри */}
           <div className="chart-card">
-            <h3 className="chart-title"><Activity size={18} color="#facc15" /> Топ жанрів</h3>
+            <h3 className="chart-title"><Activity size={18} color="#facc15" /> Топ Жанрів</h3>
             {stats?.topGenres?.length > 0 ? (
               <div className="bar-list">
                 {stats.topGenres.map((genre, idx) => (
@@ -94,9 +126,33 @@ export default function Stats() {
             )}
           </div>
 
-          {/* Графік активності */}
+          {/* Розподіл оцінок */}
           <div className="chart-card">
-            <h3 className="chart-title"><BarChart2 size={18} color="#38bdf8" /> Активність (останні 6 місяців)</h3>
+            <h3 className="chart-title"><Star size={18} color="#f59e0b" /> Розподіл оцінок</h3>
+            {stats?.ratings?.length > 0 ? (
+              <div className="bar-list">
+                {stats.ratings.map((ratingObj, idx) => (
+                  <div key={idx} className="bar-item">
+                    <div className="bar-label">
+                      <span className="bar-name" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {ratingObj.rating} <Star size={12} fill="#f59e0b" color="#f59e0b" />
+                      </span>
+                      <span className="bar-count">{ratingObj.count}</span>
+                    </div>
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ backgroundColor: '#f59e0b', width: `${(ratingObj.count / maxRatingCount) * 100}%` }}></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-text">Оцінки ще не виставлялись.</p>
+            )}
+          </div>
+
+          {/* Активність по місяцях */}
+          <div className="chart-card">
+            <h3 className="chart-title"><BarChart2 size={18} color="#38bdf8" /> Перегляди (Місяці)</h3>
             {stats?.activity?.length > 0 ? (
               <div className="activity-chart">
                 {stats.activity.map((monthData, idx) => (
@@ -111,7 +167,25 @@ export default function Stats() {
                 ))}
               </div>
             ) : (
-              <p className="empty-text">Немає активності за останні місяці.</p>
+              <p className="empty-text">Немає даних.</p>
+            )}
+          </div>
+
+          {/* Популярні роки релізу */}
+          <div className="chart-card">
+            <h3 className="chart-title"><Calendar size={18} color="#c084fc" /> Популярні роки релізу</h3>
+            {stats?.releaseYears?.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                {stats.releaseYears.map((yearObj, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: '#1a1a1a', padding: '12px 16px', borderRadius: '8px', border: '1px solid #2a2a2a' }}>
+                    <div style={{ color: '#c084fc', fontWeight: 'bold', fontSize: '18px', minWidth: '30px' }}>#{idx + 1}</div>
+                    <div style={{ flex: 1, color: '#f8fafc', fontSize: '16px', fontWeight: '600' }}>{yearObj.year}</div>
+                    <div style={{ color: '#94a3b8', fontSize: '14px', fontWeight: 'bold', backgroundColor: '#2a2a2a', padding: '4px 10px', borderRadius: '20px' }}>{yearObj.count} медіа</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-text">Немає даних.</p>
             )}
           </div>
         </div>
@@ -119,12 +193,12 @@ export default function Stats() {
 
       <style>{`
         .stats-container { background-color: #0a0a0a; color: #f3f4f6; min-height: 100vh; padding: 30px 40px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        .stats-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; max-width: 1000px; margin-left: auto; margin-right: auto; }
+        .stats-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; max-width: 1100px; margin-left: auto; margin-right: auto; }
         .page-title { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 24px; color: #fff; }
         .nav-btn { background: rgba(20, 20, 20, 0.85); border: 1px solid rgba(255,255,255,0.1); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: bold; transition: all 0.2s ease; }
         .nav-btn:hover { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: #38bdf8; transform: translateX(-2px); }
         
-        .stats-main { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; }
+        .stats-main { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; padding-bottom: 50px; }
         
         .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
         .kpi-card { background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 24px; display: flex; align-items: center; gap: 20px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
@@ -138,8 +212,15 @@ export default function Stats() {
 
         .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 30px; }
         .chart-card { background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+        .full-width { grid-column: 1 / -1; }
         .chart-title { display: flex; align-items: center; gap: 10px; margin: 0 0 24px 0; color: #fff; font-size: 18px; }
         
+        /* Sparkline (Daily Activity) */
+        .sparkline-container { display: flex; align-items: flex-end; justify-content: space-between; height: 100px; gap: 4px; padding-top: 10px; }
+        .sparkline-bar-wrapper { flex: 1; height: 100%; display: flex; align-items: flex-end; cursor: pointer; transition: opacity 0.2s; }
+        .sparkline-bar-wrapper:hover { opacity: 0.7; }
+        .sparkline-bar { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+
         /* Bar List */
         .bar-list { display: flex; flex-direction: column; gap: 16px; }
         .bar-item { display: flex; flex-direction: column; gap: 6px; }

@@ -8,23 +8,23 @@ import tmdbRoutes from './src/routes/tmdb.js';
 import listRoutes from './src/routes/lists.js';
 import omdbRoutes from './src/routes/omdb.js';
 import statsRoutes from './src/routes/stats.js';
+import settingsRoutes from './src/routes/settings.js';
 
 dotenv.config();
 
-const fastify = Fastify({
-  logger: true
-});
+const fastify = Fastify({ logger: true });
 
 fastify.get('/api/health', async (request, reply) => {
   return { status: 'ok', message: 'Media Tracker API працює!' };
 });
 
-// Реєстрація роутів
+// Реєстрація маршрутів
 fastify.register(mediaRoutes, { prefix: '/api' });
 fastify.register(tmdbRoutes, { prefix: '/api/external' });
 fastify.register(omdbRoutes, { prefix: '/api/external' });
 fastify.register(listRoutes, { prefix: '/api' });
-fastify.register(statsRoutes, { prefix: '/api' }); // Новий роут статистики
+fastify.register(statsRoutes, { prefix: '/api' });
+fastify.register(settingsRoutes, { prefix: '/api' });
 
 const start = async () => {
   try {

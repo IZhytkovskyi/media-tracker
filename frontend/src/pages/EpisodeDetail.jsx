@@ -96,7 +96,8 @@ export default function EpisodeDetail() {
                 total_episodes: seriesData.total_episodes || seriesData.number_of_episodes || 0,
                 poster_path: seriesData.poster_path,
                 backdrop_path: seriesData.backdrop_path,
-                release_date: seriesData.first_air_date || seriesData.release_date
+                release_date: seriesData.first_air_date || seriesData.release_date,
+                genres: seriesData.genres || []
             });
             seriesMediaId = createSeriesRes.data.id;
         }

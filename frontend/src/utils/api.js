@@ -1,11 +1,7 @@
 // frontend/src/utils/api.js
-
 const request = async (url, options = {}) => {
     const headers = { ...options.headers };
     
-    // Додаємо Content-Type тільки якщо є тіло запиту (body).
-    // Fastify відхиляє запит з помилкою 400 Bad Request, якщо вказано application/json, 
-    // але тіло запиту порожнє (що нормально для DELETE/GET запитів).
     if (options.body && !headers['Content-Type']) {
         headers['Content-Type'] = 'application/json';
     }
@@ -21,7 +17,6 @@ const request = async (url, options = {}) => {
     if (contentType && contentType.includes('application/json')) {
         data = await res.json();
     } else {
-        // На випадок якщо сервер поверне 204 No Content або простий текст
         const text = await res.text();
         try { 
             data = text ? JSON.parse(text) : {}; 
@@ -30,7 +25,7 @@ const request = async (url, options = {}) => {
         }
     }
 
-    if (!res.ok) throw new Error(data.error || 'Помилка запиту');
+    if (!res.ok) throw new Error(data.error || 'Сталася помилка при запиті');
     return data;
 };
 
@@ -67,4 +62,30 @@ export const api = {
     
     searchTMDB: (query) => request(`/api/external/tmdb/search?query=${encodeURIComponent(query)}`),
     getStats: () => request('/api/stats/general'),
+    
+    syncMetadata: () => request('/api/settings/sync-metadata', { method: 'POST' }),
+    importData: (data) => request('/api/settings/import', { method: 'POST', body: JSON.stringify(data) }),
+    
+    exportDatabase: async () => {
+        const res = await fetch('/api/settings/export');
+        if (!res.ok) throw new Error('Помилка завантаження файлу БД');
+        
+        const blob = await res.blob();
+        
+        const contentDisposition = res.headers.get('content-disposition');
+        let filename = 'tracker_backup.db';
+        if (contentDisposition && contentDisposition.includes('filename=')) {
+            filename = contentDisposition.split('filename=')[1].replace(/"/g, '');
+        }
+
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    }
 };

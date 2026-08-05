@@ -1,3 +1,5 @@
+// frontend/src/utils.js
+
 export const getLocalDateString = () => {
   const d = new Date();
   const year = d.getFullYear();
@@ -23,7 +25,7 @@ export const getJobTranslation = (job, gender) => {
       'Production Design': 'Художник-постановник',
       'Art Direction': 'Артдиректор',
       'Set Decoration': 'Декоратор',
-      'Costume Design': isFemale ? 'Художниця з костюмів' : 'Художник з костюмів',
+      'Costume Design': isFemale ? 'Художниця по костюмах' : 'Художник по костюмах',
       'Makeup Artist': 'Гример',
       'Hairstylist': 'Стиліст зачісок',
       'Casting': 'Кастинг-директор',
@@ -35,11 +37,10 @@ export const getJobTranslation = (job, gender) => {
   return translations[job] || job;
 };
 
-// Нова функція для отримання середнього кольору зображення
 export const getAverageColor = (imageUrl) => {
   return new Promise((resolve) => {
     const img = new Image();
-    // Важливо для обходу CORS при використанні canvas
+    // CORS для того, щоб не було помилок малювання на canvas
     img.crossOrigin = 'Anonymous'; 
     img.src = imageUrl;
     img.onload = () => {
@@ -67,9 +68,32 @@ export const getAverageColor = (imageUrl) => {
         b = Math.floor(b / count);
         resolve(`${r}, ${g}, ${b}`);
       } catch (e) {
-        resolve('10, 10, 10'); // Резервний темний колір у разі помилки
+        resolve('10, 10, 10'); // Запасний темний колір
       }
     };
     img.onerror = () => resolve('10, 10, 10');
   });
+};
+
+/**
+ * Оптимізація: Єдина функція для формування URL зображень з TMDB.
+ * @param {string} path - Шлях до зображення (наприклад, /kqjL17yufvn9OVLyXYpvtyrFfak.jpg)
+ * @param {string} size - Розмір зображення (w92, w154, w185, w342, w500, w780, original)
+ * @param {string} fallbackText - Текст для заглушки, якщо зображення немає
+ */
+export const getTmdbImage = (path, size = 'w500', fallbackText = 'Немає+Зображення') => {
+  if (!path || path === 'null') {
+    // Формуємо розміри для плейсхолдера на основі запитуваного розміру
+    let dims = '300x450';
+    if (size === 'w92') dims = '92x138';
+    if (size === 'w154') dims = '154x231';
+    if (size === 'w185' || size === 'w300') dims = '300x170'; // Для кадрів з епізодів
+    if (size === 'w780' || size === 'original') dims = '1280x720';
+    
+    return `https://via.placeholder.com/${dims}?text=${fallbackText}`;
+  }
+  
+  if (path.startsWith('http')) return path;
+  
+  return `https://image.tmdb.org/t/p/${size}${path}`;
 };

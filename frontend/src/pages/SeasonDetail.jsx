@@ -110,7 +110,8 @@ export default function SeasonDetail() {
                 total_episodes: seriesData.total_episodes || seriesData.number_of_episodes || 0,
                 poster_path: seriesData.poster_path,
                 backdrop_path: seriesData.backdrop_path,
-                release_date: seriesData.first_air_date || seriesData.release_date
+                release_date: seriesData.first_air_date || seriesData.release_date,
+                genres: seriesData.genres || []
             });
             seriesMediaId = createSeriesRes.data.id;
         }
@@ -276,7 +277,7 @@ export default function SeasonDetail() {
         <div style={styles.rightColumn}>
           <div style={styles.headerBlock}>
             <h1 style={styles.mainTitle}>
-              {seasonData.season_number === 0 && !seasonData.name.toLowerCase().includes('спец') ? 'Спеціальні епізоди' : seasonData.name}
+              {seasonData.season_number === 0 && !seasonData.name.toLowerCase().includes('спец') ? 'Спецвипуски' : seasonData.name}
             </h1>
             <h2 style={styles.originalTitle} onClick={() => navigate(`/media/series/${tmdbId}`)} className="series-link">
                 {displaySeriesTitle}
@@ -361,7 +362,7 @@ export default function SeasonDetail() {
                             </div>
                             
                             <div style={{ display: 'flex', gap: '15px', color: '#64748b', fontSize: '13px' }}>
-                                <span>{ep.air_date ? new Date(ep.air_date).toLocaleDateString('uk-UA') : 'ТБА'}</span>
+                                <span>{ep.air_date ? new Date(ep.air_date).toLocaleDateString('uk-UA') : 'Невідомо'}</span>
                                 {ep.runtime > 0 && <span>{ep.runtime} хв.</span>}
                             </div>
                             
@@ -381,7 +382,7 @@ export default function SeasonDetail() {
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
                             onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                            title={isWatched ? "Скасувати перегляд" : "Відмітити як переглянуто"}
+                            title={isWatched ? "Відмінити перегляд" : "Відмітити як переглянуте"}
                         >
                             {isWatched ? (
                                 <CheckCircle size={28} color="#2ecc71" fill="rgba(46, 204, 113, 0.2)" />
